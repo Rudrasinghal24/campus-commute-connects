@@ -28,7 +28,7 @@ async function getFaceDetector(): Promise<FaceDetector> {
         delegate: "GPU",
       },
       runningMode: "IMAGE",
-      minDetectionConfidence: 0.5,
+      minDetectionConfidence: 0.6,
     });
     detectorInstance = detector;
     return detector;
@@ -36,13 +36,63 @@ async function getFaceDetector(): Promise<FaceDetector> {
   return detectorPromise;
 }
 
+type FaceCrop = { x: number; y: number; w: number; h: number; score: number };
+
+async function detectFaceCrop(img: HTMLImageElement): Promise<FaceCrop | null> {
+  try {
+    const detector = await getFaceDetector();
+    const result = detector.detect(img);
+    if (!result.detections?.length) return null;
+    const best = result.detections.reduce((a, b) =>
+      (a.categories[0]?.score ?? 0) > (b.categories[0]?.score ?? 0) ? a : b
+    );
+    const score = best.categories[0]?.score ?? 0;
+    if (score < 0.55) return null;
+    const bb = best.boundingBox;
+    if (!bb) return null;
+    return { x: bb.originX, y: bb.originY, w: bb.width, h: bb.height, score };
+  } catch {
+    return null;
+  }
+}
+
+function renderFaceCrop(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  crop: FaceCrop | null,
+  size: number
+): Uint8ClampedArray {
+  ctx.clearRect(0, 0, size, size);
+  if (crop) {
+    const pad = 0.25;
+    const x = Math.max(0, crop.x - crop.w * pad);
+    const y = Math.max(0, crop.y - crop.h * pad);
+    const w = Math.min(img.naturalWidth - x, crop.w * (1 + 2 * pad));
+    const h = Math.min(img.naturalHeight - y, crop.h * (1 + 2 * pad));
+    ctx.drawImage(img, x, y, w, h, 0, 0, size, size);
+  } else {
+    ctx.drawImage(img, 0, 0, size, size);
+  }
+  return ctx.getImageData(0, 0, size, size).data;
+}
+
+/**
+ * Compares two face images using face-region-cropped Normalized Cross-Correlation (NCC).
+ *
+ * Returns a value in [0, 1]:
+ *   ~0.90+ → same person, good match
+ *   ~0.82–0.89 → same person, different conditions
+ *   <0.82 → likely different people
+ *   0 → no face detected in live capture (security: rejects photos-of-photos when they can't be detected)
+ *
+ * The function:
+ *  1. Runs MediaPipe face detector on both images to get bounding boxes
+ *  2. Crops to the face region (+25% padding) in both images
+ *  3. Computes grayscale NCC on 128×128 crops → lighting-invariant comparison
+ *  4. Returns 0 immediately if the live capture (img2) has no detectable face
+ */
 export async function compareFaceImages(img1DataUrl: string, img2DataUrl: string): Promise<number> {
-  const SIZE = 48;
-  const canvas = document.createElement("canvas");
-  canvas.width = SIZE;
-  canvas.height = SIZE;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return 0;
+  const SIZE = 128;
 
   const loadImage = (src: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
@@ -53,21 +103,51 @@ export async function compareFaceImages(img1DataUrl: string, img2DataUrl: string
     });
 
   try {
-    const i1 = await loadImage(img1DataUrl);
-    ctx.drawImage(i1, 0, 0, SIZE, SIZE);
-    const d1 = ctx.getImageData(0, 0, SIZE, SIZE).data;
+    const [i1, i2] = await Promise.all([loadImage(img1DataUrl), loadImage(img2DataUrl)]);
+    const [crop1, crop2] = await Promise.all([detectFaceCrop(i1), detectFaceCrop(i2)]);
 
-    const i2 = await loadImage(img2DataUrl);
-    ctx.drawImage(i2, 0, 0, SIZE, SIZE);
-    const d2 = ctx.getImageData(0, 0, SIZE, SIZE).data;
-
-    let diff = 0;
-    for (let i = 0; i < d1.length; i += 4) {
-      diff += Math.abs(d1[i] - d2[i]) + Math.abs(d1[i + 1] - d2[i + 1]) + Math.abs(d1[i + 2] - d2[i + 2]);
+    if (!crop2) {
+      console.log("[FaceCompare] No face detected in live capture — rejecting");
+      return 0;
     }
-    const maxDiff = SIZE * SIZE * 3 * 255;
-    return 1 - diff / maxDiff;
-  } catch {
+
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return 0;
+
+    const d1 = renderFaceCrop(ctx, i1, crop1, SIZE);
+    const d2 = renderFaceCrop(ctx, i2, crop2, SIZE);
+
+    let sum1 = 0, sum2 = 0;
+    const n = SIZE * SIZE;
+    for (let i = 0; i < d1.length; i += 4) {
+      sum1 += 0.299 * d1[i] + 0.587 * d1[i + 1] + 0.114 * d1[i + 2];
+      sum2 += 0.299 * d2[i] + 0.587 * d2[i + 1] + 0.114 * d2[i + 2];
+    }
+    const mean1 = sum1 / n;
+    const mean2 = sum2 / n;
+
+    let cov = 0, var1 = 0, var2 = 0;
+    for (let i = 0; i < d1.length; i += 4) {
+      const v1 = (0.299 * d1[i] + 0.587 * d1[i + 1] + 0.114 * d1[i + 2]) - mean1;
+      const v2 = (0.299 * d2[i] + 0.587 * d2[i + 1] + 0.114 * d2[i + 2]) - mean2;
+      cov += v1 * v2;
+      var1 += v1 * v1;
+      var2 += v2 * v2;
+    }
+
+    if (var1 === 0 || var2 === 0) return 0;
+    const ncc = cov / Math.sqrt(var1 * var2);
+    const score = (ncc + 1) / 2;
+    console.log(
+      `[FaceCompare] NCC=${ncc.toFixed(3)} score=${score.toFixed(3)} ` +
+      `crop1=${crop1 ? crop1.score.toFixed(2) : "none"} crop2=${crop2.score.toFixed(2)}`
+    );
+    return score;
+  } catch (e) {
+    console.error("[FaceCompare] Error:", e);
     return 0;
   }
 }
@@ -142,25 +222,25 @@ export function FaceCapture({ onCapture, onError, hint, captureLabel }: Props) {
       const detector = await getFaceDetector();
       const result = detector.detect(canvas);
       if (!result.detections || result.detections.length === 0) {
-        console.log("[FaceCapture] No face detected in frame");
+        console.log("[FaceCapture] No face detected — rejecting capture");
         setStatus("no_face");
         return;
       }
-      console.log("[FaceCapture] Face detected, saving image");
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      const bestScore = result.detections[0]?.categories[0]?.score ?? 0;
+      if (bestScore < 0.6) {
+        console.log("[FaceCapture] Face confidence too low:", bestScore);
+        setStatus("no_face");
+        return;
+      }
+      console.log("[FaceCapture] Face detected (confidence:", bestScore.toFixed(2), ") saving image");
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       setStatus("done");
       stopStream();
       onCapture(dataUrl);
     } catch (e) {
-      console.warn("[FaceCapture] Detector error, proceeding with capture anyway:", e);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      if (dataUrl.length > 1000) {
-        setStatus("done");
-        stopStream();
-        onCapture(dataUrl);
-      } else {
-        setStatus("no_face");
-      }
+      console.error("[FaceCapture] Detection failed:", e);
+      setStatus("error");
+      setErrMsg("Face detection failed. Please reload the page and try again.");
     }
   };
 
@@ -223,7 +303,7 @@ export function FaceCapture({ onCapture, onError, hint, captureLabel }: Props) {
       {status === "no_face" && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex items-center gap-2 text-sm">
           <AlertTriangle className="size-4 text-warning shrink-0" />
-          <span className="text-warning font-medium">No face detected. Centre your face in the oval and try again.</span>
+          <span className="text-warning font-medium">No face detected. Centre your face in the oval, ensure good lighting, and try again.</span>
         </div>
       )}
 

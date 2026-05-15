@@ -39,6 +39,7 @@ function Register() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [registeredInfo, setRegisteredInfo] = useState<{ name: string; rollNo: string; seatNo: string; route: string; fare: number } | null>(null);
   const [apiError, setApiError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const inputCls = (field: keyof FormData) =>
     `w-full bg-card border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent text-foreground placeholder:text-muted-foreground ${formErrors[field] ? "border-destructive" : "border-border"}`;
@@ -65,33 +66,43 @@ function Register() {
   };
 
   const handleCapture = async (photoDataUrl: string) => {
+    if (submitting) return;
+    setSubmitting(true);
     setApiError("");
     const pickupPoint = formData.pickupPoint || routes.find((r) => r.id === formData.routeId)?.stops[0] || "";
     console.log("[Register] Submitting registration to API...");
-    const result = await api.students.register({
-      name: formData.name.trim(),
-      rollNo: formData.rollNo.trim(),
-      branch: formData.branch,
-      semester: formData.semester,
-      phone: formData.phone,
-      parentPhone: formData.parentPhone,
-      routeId: formData.routeId,
-      pickupPoint,
-      photo: photoDataUrl,
-      password: formData.password,
-    });
-    if (!result.ok) {
-      console.error("[Register] API error:", result.error);
-      setApiError(result.error);
+    try {
+      const result = await api.students.register({
+        name: formData.name.trim(),
+        rollNo: formData.rollNo.trim(),
+        branch: formData.branch,
+        semester: formData.semester,
+        phone: formData.phone,
+        parentPhone: formData.parentPhone,
+        routeId: formData.routeId,
+        pickupPoint,
+        photo: photoDataUrl,
+        password: formData.password,
+      });
+      if (!result.ok) {
+        console.error("[Register] API error:", result.error);
+        setApiError(result.error);
+        setStep("form");
+        return;
+      }
+      console.log("[Register] Registered successfully:", result.data.id);
+      addStudentFromApi({ ...result.data, photo: photoDataUrl });
+      loginStudent(result.data.id);
+      const route = routes.find((r) => r.id === formData.routeId);
+      setRegisteredInfo({ name: result.data.name, rollNo: result.data.rollNo, seatNo: result.data.seatNo, route: route?.name ?? "—", fare: route?.fare ?? 0 });
+      setStep("success");
+    } catch (e) {
+      console.error("[Register] Unexpected error:", e);
+      setApiError("An unexpected error occurred. Please try again.");
       setStep("form");
-      return;
+    } finally {
+      setSubmitting(false);
     }
-    console.log("[Register] Registered successfully:", result.data.id);
-    addStudentFromApi({ ...result.data, photo: photoDataUrl });
-    loginStudent(result.data.id);
-    const route = routes.find((r) => r.id === formData.routeId);
-    setRegisteredInfo({ name: result.data.name, rollNo: result.data.rollNo, seatNo: result.data.seatNo, route: route?.name ?? "—", fare: route?.fare ?? 0 });
-    setStep("success");
   };
 
   return (

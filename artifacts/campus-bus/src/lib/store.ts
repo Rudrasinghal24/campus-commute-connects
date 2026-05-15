@@ -162,17 +162,21 @@ export const useStore = create<State>()(
       logout: () => set({ role: null, currentStudentId: null }),
 
       addStudentFromApi: (s) => {
-        const exists = get().students.some((x) => x.id === s.id);
+        const existing = get().students;
         const student: Student = {
           id: s.id, name: s.name, rollNo: s.rollNo, branch: s.branch,
           semester: s.semester, phone: s.phone, parentPhone: s.parentPhone,
           routeId: s.routeId, pickupPoint: s.pickupPoint, seatNo: s.seatNo,
           photo: s.photo ?? undefined, feesPaid: s.feesPaid,
         };
-        if (exists) {
-          set({ students: get().students.map((x) => (x.id === s.id ? student : x)) });
+        const byId = existing.some((x) => x.id === s.id);
+        const byRollNo = existing.some((x) => x.rollNo.toLowerCase() === s.rollNo.toLowerCase() && x.id !== s.id);
+        if (byId) {
+          set({ students: existing.map((x) => (x.id === s.id ? student : x)) });
+        } else if (byRollNo) {
+          set({ students: existing.map((x) => (x.rollNo.toLowerCase() === s.rollNo.toLowerCase() ? student : x)) });
         } else {
-          set({ students: [...get().students, student] });
+          set({ students: [...existing, student] });
         }
       },
 
