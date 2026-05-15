@@ -1,0 +1,367 @@
+Perform a COMPLETE stabilization, implementation, security-hardening, and production-ready finalization of the college bus management and live face verification attendance system.
+
+IMPORTANT GLOBAL RULES:
+
+* Preserve already working systems unless they are broken.
+* Do NOT unnecessarily redesign UI.
+* Do NOT over-refactor stable modules.
+* Prioritize reliability, stability, low-error implementation, and real working workflows.
+* Avoid overengineering.
+* Keep architecture simple and production-ready.
+* Preserve existing payment system.
+* Remove QR attendance system completely.
+* Replace old unstable face-api.js realtime descriptor loop implementation.
+* Use MediaPipe Face Detection with a stable capture-and-compare architecture.
+
+==================================================
+
+1. REQUIRED TECHNOLOGY STACK
+   ==================================================
+
+Frontend:
+
+* React + TypeScript
+* MediaPipe Face Detection
+* navigator.mediaDevices.getUserMedia()
+
+Backend:
+
+* Node.js + Express
+* PostgreSQL
+
+Verification Architecture:
+
+* lightweight capture-and-compare workflow
+* stable live webcam capture
+* no continuous heavy realtime descriptor loops
+* no unstable face-api.js realtime pipeline
+
+==================================================
+2. STUDENT REGISTRATION SYSTEM
+==============================
+
+When a student clicks Register:
+
+Student must fill:
+
+* full name
+* roll number
+* branch
+* semester
+* student mobile number
+* parent mobile number
+* route
+* pickup point
+
+==================================================
+3. VALIDATION & LOOPHOLE PREVENTION
+===================================
+
+Implement strict validation and fraud prevention.
+
+Prevent:
+
+* duplicate roll numbers
+* duplicate student mobile numbers
+* duplicate parent mobile numbers
+* duplicate registrations
+* invalid empty fields
+* impossible data entries
+* malformed numbers
+* invalid routes/pickup points
+
+Show proper validation messages for every invalid input.
+
+Ensure:
+
+* database uniqueness constraints exist
+* backend validation exists
+* frontend validation exists
+
+==================================================
+4. LIVE CAMERA REGISTRATION
+===========================
+
+After registration details are validated:
+
+* automatically open FRONT CAMERA
+* use ONLY live webcam capture
+* completely disable:
+
+  * gallery uploads
+  * file picker
+  * manual image uploads
+
+Use:
+
+* navigator.mediaDevices.getUserMedia()
+* facingMode: "user"
+* autoplay
+* playsInline
+
+Camera requirements:
+
+* Android Chrome compatible
+* iPhone Safari compatible
+* HTTPS compatible
+* responsive and lightweight
+
+==================================================
+5. FACE CAPTURE SYSTEM
+======================
+
+Use MediaPipe Face Detection for:
+
+* validating human face exists
+* stable live face detection
+* reliable capture flow
+
+Implement:
+
+* capture ONE clear live image
+* stable frame extraction using canvas
+* proper image generation using canvas.toBlob or canvas.toDataURL
+* proper image saving pipeline
+* prevent blank captures
+* ensure captured image preview works
+
+Store:
+
+* student face image
+* verification metadata
+* linked student profile
+* assigned seat
+
+Save all data properly in PostgreSQL.
+
+==================================================
+6. AFTER SUCCESSFUL REGISTRATION
+================================
+
+After successful registration:
+
+Show student:
+
+* all registered details
+* assigned seat number
+* route details
+* payment status
+* success confirmation
+
+Prevent:
+
+* unwanted page refresh
+* broken redirects
+* duplicate submissions
+* navigation glitches
+
+==================================================
+7. PAYMENT SYSTEM
+=================
+
+Preserve and stabilize existing payment system.
+
+Requirements:
+
+* payment system must remain working
+* payment linked to student profile
+* unpaid students blocked from attendance system
+* payment persistence in PostgreSQL
+* payment status visible in dashboards
+* secure payment verification
+
+==================================================
+8. BUS ENTRY ATTENDANCE FLOW
+============================
+
+When student enters bus:
+
+* student opens attendance page
+* front camera opens automatically
+* no gallery uploads allowed
+* detect human face using MediaPipe
+* capture ONE live image automatically
+* compare captured image with registered student image
+
+If MATCHED:
+
+* mark student "IN BUS"
+* save entry timestamp
+* mark seat occupied
+* save attendance data in PostgreSQL
+* show success message
+* stop camera stream properly
+
+==================================================
+9. BUS EXIT ATTENDANCE FLOW
+===========================
+
+Before leaving bus:
+
+* open front camera again
+* capture live image
+* compare with registered student image
+
+If MATCHED:
+
+* mark final attendance PRESENT
+* save exit timestamp
+* mark seat empty
+* save full attendance history permanently
+
+==================================================
+10. FRAUD / ILLEGAL PASSENGER DETECTION
+=======================================
+
+If captured face does NOT match registered student:
+
+DO NOT mark attendance.
+
+Instead:
+
+* save suspicious captured image
+* save suspicious attempt in PostgreSQL
+
+Store:
+
+* timestamp
+* seat number
+* route
+* suspicious image
+* attempted attendance data
+
+Notify:
+
+* admin dashboard
+* conductor dashboard
+
+Also notify genuine student:
+"Another person may be occupying your assigned bus seat."
+
+==================================================
+11. CONDUCTOR OVERRIDE SYSTEM
+=============================
+
+If verification fails but conductor confirms genuine student:
+
+Conductor dashboard must allow:
+
+* manual attendance approval
+* override verification failure
+* mark attendance manually
+* add optional remarks
+
+==================================================
+12. CAMERA & VERIFICATION STABILITY
+===================================
+
+Fix completely:
+
+* webcam initialization
+* webcam permissions
+* video refs
+* stream cleanup
+* frame extraction
+* image saving
+* verification execution
+* loading deadlocks
+* infinite loading
+* async timing issues
+* state update failures
+* capture pipeline issues
+
+Ensure:
+
+* no stuck loading states
+* no broken captures
+* no blank images
+* no failed comparisons
+
+==================================================
+13. MOBILE OPTIMIZATION
+=======================
+
+Ensure:
+
+* Android Chrome compatibility
+* iPhone Safari compatibility
+* responsive layouts
+* stable mobile camera performance
+* low-memory implementation
+* smooth verification experience
+
+==================================================
+14. SECURITY & LOOPHOLE FIXES
+=============================
+
+Prevent:
+
+* fake attendance
+* duplicate registrations
+* unauthorized access
+* fake image uploads
+* spoofed submissions
+* broken payment bypass
+* invalid attendance entries
+
+Ensure:
+
+* backend validation
+* proper API validation
+* secure database persistence
+* secure session handling
+
+==================================================
+15. DATABASE PERSISTENCE
+========================
+
+Ensure all data persists correctly in PostgreSQL:
+
+* student profiles
+* face images
+* attendance
+* timestamps
+* payment status
+* suspicious logs
+* seat assignments
+* conductor overrides
+
+No frontend-only/localStorage persistence allowed.
+
+==================================================
+16. DEBUGGING & LOGGING
+=======================
+
+Add proper logs for:
+
+* camera initialized
+* face detected
+* image captured
+* image saved
+* verification started
+* verification result
+* attendance marked
+* suspicious activity detected
+* database save success/failure
+
+==================================================
+17. FINAL VERIFICATION
+======================
+
+After implementation verify completely:
+
+* registration works fully
+* live image capture works
+* images save correctly
+* payment system still works
+* duplicate prevention works
+* attendance works correctly
+* entry/exit flow works correctly
+* fraud detection works correctly
+* conductor override works
+* PostgreSQL persistence works
+* no infinite loading remains
+* no broken redirects remain
+* camera works on desktop and mobile
+* no gallery upload option exists
+* verification completes reliably
