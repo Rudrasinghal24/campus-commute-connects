@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { SeatGrid } from "@/components/seat-grid";
 import { StatCard } from "@/components/stat-card";
@@ -39,10 +40,21 @@ function ConductorPage() {
 
   const handleOverrideSubmit = () => {
     if (!overrideModal || !conductorName.trim()) return;
+    const ts = Date.now();
+    const overrideId = "ov_" + ts;
     addOverride(overrideModal.suspiciousId, overrideModal.studentId, conductorName, overrideRemarks || "Conductor verified in person", overrideModal.type);
+    api.overrides.add({
+      id: overrideId,
+      suspiciousEntryId: overrideModal.suspiciousId,
+      studentId: overrideModal.studentId,
+      conductorName,
+      remarks: overrideRemarks || "Conductor verified in person",
+      ts,
+      attendanceType: overrideModal.type,
+    }).catch(console.error);
     setOverrideModal(null);
     setOverrideRemarks("");
-    console.log("[Conductor] Override approved for suspicious entry:", overrideModal.suspiciousId);
+    console.log("[Conductor] Override approved:", overrideModal.suspiciousId);
   };
 
   return (

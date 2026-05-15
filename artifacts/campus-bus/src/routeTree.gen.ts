@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as StudentRouteImport } from './routes/student'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ConductorRouteImport } from './routes/conductor'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -29,6 +30,11 @@ const ScanRoute = ScanRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConductorRoute = ConductorRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/conductor': typeof ConductorRoute
+  '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/scan': typeof ScanRoute
   '/student': typeof StudentRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/conductor': typeof ConductorRoute
+  '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/scan': typeof ScanRoute
   '/student': typeof StudentRoute
@@ -68,20 +76,36 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/conductor': typeof ConductorRoute
+  '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/scan': typeof ScanRoute
   '/student': typeof StudentRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/conductor' | '/register' | '/scan' | '/student'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/conductor'
+    | '/login'
+    | '/register'
+    | '/scan'
+    | '/student'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/conductor' | '/register' | '/scan' | '/student'
+  to:
+    | '/'
+    | '/admin'
+    | '/conductor'
+    | '/login'
+    | '/register'
+    | '/scan'
+    | '/student'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/conductor'
+    | '/login'
     | '/register'
     | '/scan'
     | '/student'
@@ -91,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   ConductorRoute: typeof ConductorRoute
+  LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ScanRoute: typeof ScanRoute
   StudentRoute: typeof StudentRoute
@@ -117,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/conductor': {
@@ -147,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   ConductorRoute: ConductorRoute,
+  LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ScanRoute: ScanRoute,
   StudentRoute: StudentRoute,

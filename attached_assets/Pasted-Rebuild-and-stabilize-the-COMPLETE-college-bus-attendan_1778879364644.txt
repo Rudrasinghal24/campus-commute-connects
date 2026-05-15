@@ -1,0 +1,370 @@
+Rebuild and stabilize the COMPLETE college bus attendance and verification system into a SIMPLE, RELIABLE, and PRODUCTION-READY architecture.
+
+IMPORTANT:
+
+* Focus on REAL WORKING LOGIC, not demo UI.
+* Prioritize reliability and simplicity over overengineered AI systems.
+* Preserve already working backend/database/payment systems where possible.
+* Do NOT unnecessarily redesign unrelated UI.
+* Do NOT create unstable realtime AI loops.
+* Use stable capture-and-compare verification flow only.
+* Remove QR attendance system completely.
+* Remove old unstable face-api.js realtime descriptor pipeline completely.
+* Use MediaPipe Face Detection + stable live image capture workflow.
+
+==================================================
+
+1. APPLICATION STRUCTURE
+   ==================================================
+
+Create ONLY 3 MAIN PANELS:
+
+1. STUDENT PANEL
+2. CONDUCTOR PANEL
+3. ADMIN PANEL
+
+Each must have:
+
+* separate login
+* proper role-based access
+* protected routes
+* separate dashboard
+
+==================================================
+2. STUDENT REGISTRATION & LOGIN
+===============================
+
+Student Registration Fields:
+
+* full name
+* roll number
+* branch
+* semester
+* student mobile number
+* parent mobile number
+* route
+* pickup point
+* password
+
+Validation Rules:
+
+* no duplicate roll numbers
+* no duplicate student mobile numbers
+* no duplicate parent mobile numbers
+* no invalid/empty fields
+* backend + frontend validation required
+
+After registration:
+
+* create student login account
+* assign unique bus seat automatically
+* store all data in PostgreSQL
+
+==================================================
+3. STUDENT LIVE PHOTO REGISTRATION
+==================================
+
+After registration form submission:
+
+* automatically open FRONT CAMERA
+* use ONLY live webcam capture
+* completely disable:
+
+  * gallery uploads
+  * file picker
+  * manual image uploads
+
+Use:
+
+* MediaPipe Face Detection
+* navigator.mediaDevices.getUserMedia()
+
+Camera Requirements:
+
+* facingMode: "user"
+* autoplay
+* playsInline
+* Android compatible
+* iPhone compatible
+* HTTPS compatible
+
+Capture Flow:
+
+* detect human face
+* capture ONE clear live image
+* save captured student image correctly
+* store linked to student profile in PostgreSQL
+
+Fix completely:
+
+* loading issues
+* stuck capture
+* blank image capture
+* failed image save
+* async timing issues
+* camera cleanup
+
+==================================================
+4. STUDENT LOGIN DASHBOARD
+==========================
+
+After student login show:
+
+* student details
+* assigned seat number
+* route
+* payment status
+* attendance status
+
+Student must have:
+
+* START TRIP verification button
+* END TRIP verification button
+
+==================================================
+5. START TRIP VERIFICATION
+==========================
+
+When student clicks START TRIP:
+
+* open front camera automatically
+* detect human face using MediaPipe
+* capture ONE live image
+* compare with registered student image stored in DB
+
+If MATCHED:
+
+* mark student status:
+  "AVAILABLE IN BUS"
+* save trip start timestamp
+* mark assigned seat occupied
+* save verification result in PostgreSQL
+* stop camera stream
+* show success message
+
+If NOT MATCHED:
+
+* reject verification
+* save suspicious image
+* save suspicious attempt log
+* notify conductor dashboard
+* notify admin dashboard
+* notify genuine student:
+  "Another person may be occupying your assigned seat."
+
+==================================================
+6. END TRIP VERIFICATION
+========================
+
+When student clicks END TRIP:
+
+* open front camera again
+* capture live image
+* compare with registered student image
+
+If MATCHED:
+
+* mark final attendance PRESENT
+* save trip end timestamp
+* mark seat empty
+* save full attendance history
+
+If NOT MATCHED:
+
+* reject attendance completion
+* create suspicious activity log
+* notify admin and conductor dashboards
+
+==================================================
+7. CONDUCTOR PANEL
+==================
+
+Conductor dashboard must show:
+
+* all students assigned to bus
+* seat occupancy
+* students currently verified IN BUS
+* students absent
+* suspicious verification attempts
+* unpaid students
+
+If student does NOT upload attendance:
+
+* conductor gets alert:
+  "Seat appears empty / attendance missing"
+
+Conductor must have:
+
+* manual attendance override
+* mark student present manually
+* add remarks
+
+==================================================
+8. ADMIN PANEL
+==============
+
+Admin dashboard must show:
+
+* all buses
+* all students
+* attendance analytics
+* suspicious activity logs
+* seat occupancy
+* unpaid students
+* absent students
+* verification failures
+
+Admin must receive alerts for:
+
+* suspicious passengers
+* duplicate attempts
+* empty seats
+* missing attendance
+* failed verification
+
+==================================================
+9. PAYMENT SYSTEM
+=================
+
+Preserve and stabilize existing payment system.
+
+Requirements:
+
+* payment linked to student profile
+* unpaid students blocked from attendance verification
+* payment status visible in all dashboards
+* PostgreSQL persistence required
+
+==================================================
+10. CAMERA & VERIFICATION STABILITY
+===================================
+
+Fix ALL current issues completely:
+
+* webcam initialization
+* loading loops
+* stuck verification
+* failed captures
+* blank images
+* image saving failures
+* state update failures
+* camera cleanup
+* async deadlocks
+
+Ensure:
+
+* stable capture flow
+* reliable image saving
+* reliable comparison completion
+* no infinite loading states
+
+==================================================
+11. IMAGE VERIFICATION RELIABILITY
+==================================
+
+Verification must be SOLID and RELIABLE.
+
+Implement:
+
+* stable capture-and-compare workflow
+* avoid unstable continuous AI loops
+* ensure image comparison completes correctly
+* ensure real human face detection before capture
+
+Focus on:
+
+* reliability
+* consistency
+* low error rate
+* stable verification flow
+
+==================================================
+12. DATABASE PERSISTENCE
+========================
+
+Store permanently in PostgreSQL:
+
+* student profiles
+* registered face images
+* attendance records
+* timestamps
+* suspicious logs
+* seat status
+* payment status
+* conductor overrides
+
+No frontend-only persistence allowed.
+
+==================================================
+13. SECURITY & LOOPHOLE PREVENTION
+==================================
+
+Prevent:
+
+* fake attendance
+* duplicate registrations
+* invalid logins
+* gallery image uploads
+* fake verification bypass
+* unauthorized access
+* payment bypass
+
+Use:
+
+* backend validation
+* protected APIs
+* proper role-based access
+* secure session handling
+
+==================================================
+14. MOBILE OPTIMIZATION
+=======================
+
+Ensure:
+
+* Android Chrome compatibility
+* iPhone Safari compatibility
+* responsive UI
+* smooth camera performance
+* low-memory implementation
+* stable verification experience
+
+==================================================
+15. DEBUGGING & RELIABILITY LOGS
+================================
+
+Add logs for:
+
+* camera initialized
+* face detected
+* image captured
+* image saved
+* verification started
+* verification result
+* attendance marked
+* suspicious activity detected
+* database save success/failure
+
+==================================================
+16. FINAL REQUIREMENT
+=====================
+
+After implementation verify completely:
+
+* registration works correctly
+* login works correctly
+* live image capture works
+* student image saves correctly
+* verification completes correctly
+* START TRIP works
+* END TRIP works
+* attendance saves correctly
+* suspicious activity detection works
+* conductor alerts work
+* admin alerts work
+* payment system still works
+* no duplicate students possible
+* no gallery upload possible
+* no infinite loading remains
+* mobile camera works correctly
+* PostgreSQL persistence works correctly

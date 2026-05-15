@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Bus, GraduationCap, ShieldCheck, UserCog, ArrowRight, ScanFace, MapPin, Fingerprint } from "lucide-react";
+import { Bus, GraduationCap, ShieldCheck, UserCog, ArrowRight, ScanFace, MapPin, Fingerprint, LogIn } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -11,14 +11,14 @@ function Landing() {
   const navigate = useNavigate();
   const { setRole, loginStudent } = useStore();
 
-  const pickRole = (role: "student" | "admin" | "conductor") => {
-    if (role === "student") {
-      loginStudent("s1");
-      void navigate({ to: "/student" });
-    } else {
-      setRole(role);
-      void navigate({ to: role === "admin" ? "/admin" : "/conductor" });
-    }
+  const pickRole = (role: "admin" | "conductor") => {
+    setRole(role);
+    void navigate({ to: role === "admin" ? "/admin" : "/conductor" });
+  };
+
+  const demoAsStudent = () => {
+    loginStudent("s1");
+    void navigate({ to: "/student" });
   };
 
   return (
@@ -55,14 +55,20 @@ function Landing() {
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
-                to="/register"
+                to="/login"
                 className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90 transition"
               >
-                Register a student <ArrowRight className="size-4" />
+                <LogIn className="size-4" /> Student Login
+              </Link>
+              <Link
+                to="/register"
+                className="bg-card border border-border text-foreground px-6 py-3 rounded-xl font-semibold flex items-center gap-2 hover:bg-muted transition"
+              >
+                Register <ArrowRight className="size-4" />
               </Link>
               <button
-                onClick={() => pickRole("student")}
-                className="bg-card border border-border text-foreground px-6 py-3 rounded-xl font-semibold hover:bg-muted transition"
+                onClick={demoAsStudent}
+                className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition"
               >
                 Demo as student
               </button>
@@ -99,15 +105,15 @@ function Landing() {
         <div className="grid md:grid-cols-3 gap-5">
           <RoleCard
             icon={<GraduationCap className="size-6" />}
-            title="Student"
-            desc="View seat, pay fees, scan QR for entry/exit, attendance history."
+            title="Student Login"
+            desc="Sign in with roll number and password. Face-verified boarding, attendance and payments."
             tone="accent"
-            onClick={() => pickRole("student")}
+            href="/login"
           />
           <RoleCard
             icon={<UserCog className="size-6" />}
             title="Conductor"
-            desc="Live student list, manual attendance, occupied seats, scanner."
+            desc="Live student list, manual attendance, suspicious entries, override approval."
             tone="primary"
             onClick={() => pickRole("conductor")}
           />
@@ -143,13 +149,11 @@ function Mini({ icon, label, value }: { icon: React.ReactNode; label: string; va
 }
 
 function RoleCard({
-  icon, title, desc, tone, onClick,
-}: { icon: React.ReactNode; title: string; desc: string; tone: "primary" | "accent"; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-left bg-card border border-border rounded-3xl p-6 hover:border-accent hover:shadow-lg hover:shadow-accent/10 transition group"
-    >
+  icon, title, desc, tone, onClick, href,
+}: { icon: React.ReactNode; title: string; desc: string; tone: "primary" | "accent"; onClick?: () => void; href?: string }) {
+  const cls = "text-left bg-card border border-border rounded-3xl p-6 hover:border-accent hover:shadow-lg hover:shadow-accent/10 transition group w-full";
+  const inner = (
+    <>
       <div className={`size-12 rounded-2xl flex items-center justify-center mb-5 ${
         tone === "accent" ? "bg-accent/10 text-accent" : "bg-primary/10 text-primary"
       }`}>
@@ -160,6 +164,8 @@ function RoleCard({
       <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1 group-hover:gap-2 transition-all">
         Enter <ArrowRight className="size-3.5" />
       </span>
-    </button>
+    </>
   );
+  if (href) return <Link to={href as never} className={cls}>{inner}</Link>;
+  return <button onClick={onClick} className={cls}>{inner}</button>;
 }

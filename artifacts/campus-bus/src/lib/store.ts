@@ -91,6 +91,7 @@ type State = {
   setRole: (r: Role) => void;
   loginStudent: (id: string) => void;
   logout: () => void;
+  addStudentFromApi: (s: Omit<Student, never> & { id: string; seatNo: string; feesPaid: boolean; photo?: string | null }) => void;
   addStudent: (s: Omit<Student, "id" | "seatNo" | "feesPaid">) => AddStudentResult;
   updateStudent: (id: string, p: Partial<Student>) => void;
   addBus: (b: Omit<Bus, "id">) => void;
@@ -159,6 +160,21 @@ export const useStore = create<State>()(
       setRole: (r) => set({ role: r }),
       loginStudent: (id) => set({ role: "student", currentStudentId: id }),
       logout: () => set({ role: null, currentStudentId: null }),
+
+      addStudentFromApi: (s) => {
+        const exists = get().students.some((x) => x.id === s.id);
+        const student: Student = {
+          id: s.id, name: s.name, rollNo: s.rollNo, branch: s.branch,
+          semester: s.semester, phone: s.phone, parentPhone: s.parentPhone,
+          routeId: s.routeId, pickupPoint: s.pickupPoint, seatNo: s.seatNo,
+          photo: s.photo ?? undefined, feesPaid: s.feesPaid,
+        };
+        if (exists) {
+          set({ students: get().students.map((x) => (x.id === s.id ? student : x)) });
+        } else {
+          set({ students: [...get().students, student] });
+        }
+      },
 
       addStudent: (s) => {
         const existing = get().students;
