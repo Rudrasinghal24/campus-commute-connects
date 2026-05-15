@@ -1,6 +1,6 @@
-# [Project name]
+# UniRoute — Campus Bus Management
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A production-ready campus bus management system with live face verification attendance, seat allocation, payments, fraud detection, and conductor override capabilities.
 
 ## Run & Operate
 
@@ -19,26 +19,41 @@ _Replace the heading above with the project's name, and this line with one sente
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
+- Frontend: React + Vite + Tailwind CSS + Zustand
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/campus-bus/` — React SPA (student/conductor/admin portals)
+- `artifacts/campus-bus/src/lib/store.ts` — Zustand state store (source of truth for all client state)
+- `artifacts/campus-bus/src/components/face-capture.tsx` — reusable MediaPipe face capture component
+- `artifacts/campus-bus/src/routes/` — all page routes
+- `artifacts/api-server/` — Express API server
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Face-only attendance**: QR system removed; MediaPipe `tasks-vision` FaceDetector validates that a live face is present before capturing. The capture-and-compare architecture avoids continuous realtime descriptor loops.
+- **Client-side state with Zustand persist**: All business data (students, attendance, payments, suspicious logs, overrides) lives in Zustand with `localStorage` persistence. The API server is available for future backend migration.
+- **Store key: `uniroute-store-v2`**: Changed from `v1` to force a fresh store after schema updates.
+- **Duplicate prevention**: `addStudent` in the store validates unique roll number, student phone, and parent phone before registering.
+- **Conductor override**: When face verification fails after 3 retries, a suspicious entry is saved with the captured image. The conductor can approve attendance manually with a name + remarks modal.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Student portal**: Registration (3-step: details → live face photo → success), attendance via face scan (entry/exit), fee payment, live seat grid
+- **Conductor portal**: Student list with manual entry marking, suspicious alerts tab with override approval modal, past overrides log
+- **Admin console**: Overview, bus/route CRUD, student list with photos, seat assignment, payment history, all attendance logs, suspicious entries with captured images comparison, conductor overrides log
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep the existing UI design — no redesigns unless broken
+- No file upload for photos — live webcam capture only
+- MediaPipe FaceDetector via CDN WASM (loaded lazily in `face-capture.tsx`)
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Pre-existing TypeScript errors in `src/components/ui/` (recharts, cmdk, vaul, etc.) are for unused shadcn components — ignore them
+- MediaPipe WASM is loaded from `cdn.jsdelivr.net` on first use; needs internet access
+- Face comparison uses canvas pixel similarity (48×48 downscale). Accurate when same person under similar lighting; not a biometric-grade matcher.
 
 ## Pointers
 

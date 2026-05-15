@@ -1,11 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { useStore } from "@/lib/store";
 import { AppShell } from "@/components/app-shell";
 import { SeatGrid } from "@/components/seat-grid";
 import { StatCard } from "@/components/stat-card";
-import { Bus, QrCode, Wallet, History, Armchair, ScanLine, MapPin, CheckCircle2, XCircle } from "lucide-react";
+import { Bus, Wallet, History, Armchair, ScanFace, MapPin, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/student")({
   component: StudentPage,
@@ -17,23 +15,16 @@ function StudentPage() {
   const route = routes.find((r) => r.id === me?.routeId);
   const myAttendance = attendance.filter((a) => a.studentId === me?.id);
   const myPayments = payments.filter((p) => p.studentId === me?.id);
-  const attRate = myAttendance.length === 0 ? 0 : Math.round((myAttendance.filter((a) => a.verified).length / myAttendance.length) * 100);
-  const [qr, setQr] = useState<string>("");
-
-  useEffect(() => {
-    if (!me) return;
-    void QRCode.toDataURL(JSON.stringify({ id: me.id, roll: me.rollNo, seat: me.seatNo, route: me.routeId }), {
-      width: 320,
-      margin: 1,
-      color: { dark: "#1e1b4b", light: "#ffffff" },
-    }).then(setQr);
-  }, [me]);
+  const attRate =
+    myAttendance.length === 0
+      ? 0
+      : Math.round((myAttendance.filter((a) => a.verified || a.conductorOverride).length / myAttendance.length) * 100);
 
   if (!me) return null;
 
   const nav = [
     { to: "/student", label: "Dashboard", icon: <Bus className="size-3.5" /> },
-    { to: "/scan", label: "Scan", icon: <ScanLine className="size-3.5" /> },
+    { to: "/scan", label: "Board Bus", icon: <ScanFace className="size-3.5" /> },
   ];
 
   return (
@@ -59,14 +50,17 @@ function StudentPage() {
           </div>
 
           <div className="bg-primary text-primary-foreground rounded-3xl p-6 text-center shadow-lg shadow-primary/20">
-            <p className="text-[10px] uppercase tracking-widest opacity-60 mb-3">Boarding QR</p>
-            <div className="bg-white p-3 rounded-2xl inline-block mb-4">
-              {qr && <img src={qr} alt="QR" className="size-40" />}
+            <p className="text-[10px] uppercase tracking-widest opacity-60 mb-3">Daily Boarding</p>
+            <div className="size-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <ScanFace className="size-10 opacity-80" />
             </div>
-            <p className="font-display font-bold text-lg">Scan at the bus terminal</p>
-            <p className="text-xs opacity-70 mt-1">Or open scanner from any device</p>
-            <Link to="/scan" className="mt-4 inline-flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-semibold">
-              <ScanLine className="size-4" /> Open Scanner
+            <p className="font-display font-bold text-lg">Face Verification</p>
+            <p className="text-xs opacity-70 mt-1 mb-4">Live selfie · no QR required</p>
+            <Link
+              to="/scan"
+              className="inline-flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition"
+            >
+              <ScanFace className="size-4" /> Board Bus
             </Link>
           </div>
         </aside>
@@ -75,16 +69,19 @@ function StudentPage() {
           <div className="grid sm:grid-cols-3 gap-4">
             <StatCard label="Assigned Seat" value={me.seatNo} hint="Auto-allocated" tone="primary" icon={<Armchair className="size-4" />} />
             <StatCard label="Fee Status" value={me.feesPaid ? "PAID" : "DUE"} hint={`Fare ₹${route?.fare ?? 0}/sem`} tone={me.feesPaid ? "success" : "danger"} icon={<Wallet className="size-4" />} />
-            <StatCard label="Attendance" value={`${attRate}%`} hint={`${myAttendance.length} scans`} tone="accent" icon={<QrCode className="size-4" />} />
+            <StatCard label="Attendance" value={`${attRate}%`} hint={`${myAttendance.length} entries`} tone="accent" icon={<ShieldCheck className="size-4" />} />
           </div>
 
           {!me.feesPaid && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <p className="font-semibold text-foreground">Semester fees pending</p>
-                <p className="text-sm text-muted-foreground">Pay ₹{route?.fare ?? 0} to confirm your seat allocation.</p>
+                <p className="text-sm text-muted-foreground">Pay ₹{route?.fare ?? 0} to activate boarding access.</p>
               </div>
-              <button onClick={() => payFees(me.id, route?.fare ?? 4500)} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90">
+              <button
+                onClick={() => payFees(me.id, route?.fare ?? 4500)}
+                className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
+              >
                 Pay ₹{route?.fare ?? 0}
               </button>
             </div>
@@ -101,21 +98,32 @@ function StudentPage() {
           </div>
 
           <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
-            <h4 className="font-display font-bold mb-4 flex items-center gap-2"><History className="size-4" /> Attendance &amp; Payments</h4>
+            <h4 className="font-display font-bold mb-4 flex items-center gap-2">
+              <History className="size-4" /> Attendance &amp; Payments
+            </h4>
             <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-3">Recent scans</p>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-3">Recent entries</p>
                 <div className="space-y-2">
                   {myAttendance.slice(0, 6).map((a) => (
                     <div key={a.id} className="flex items-center justify-between p-3 bg-muted rounded-xl text-sm">
                       <div className="flex items-center gap-2">
-                        {a.verified ? <CheckCircle2 className="size-4 text-success" /> : <XCircle className="size-4 text-destructive" />}
+                        {a.verified || a.conductorOverride ? (
+                          <CheckCircle2 className="size-4 text-success" />
+                        ) : (
+                          <XCircle className="size-4 text-destructive" />
+                        )}
                         <span className="font-medium capitalize">{a.type}</span>
+                        {a.conductorOverride && (
+                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">Override</span>
+                        )}
                       </div>
                       <span className="text-xs text-muted-foreground">{new Date(a.ts).toLocaleString()}</span>
                     </div>
                   ))}
-                  {myAttendance.length === 0 && <p className="text-sm text-muted-foreground">No scans yet — open the scanner to mark entry.</p>}
+                  {myAttendance.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No entries yet — use the boarding button above.</p>
+                  )}
                 </div>
               </div>
               <div>

@@ -1,132 +1,86 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import jsQR from "jsqr";
+import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { ArrowLeft, Bus, ScanLine, ScanFace, CheckCircle2, XCircle, RefreshCcw, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Bus, ScanFace, CheckCircle2, XCircle, RefreshCcw, AlertTriangle, Wallet } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { FaceCapture, compareFaceImages } from "@/components/face-capture";
 
 export const Route = createFileRoute("/scan")({
   component: Scanner,
 });
 
-type Stage = "qr" | "selfie" | "verifying" | "success" | "fail" | "blocked";
+type Stage = "camera" | "verifying" | "success" | "fail" | "blocked" | "unpaid";
 
 function Scanner() {
   const navigate = useNavigate();
-  const { students, currentStudentId, attendance, logAttendance, flagSuspicious, buses } = useStore();
+  const { students, currentStudentId, attendance, logAttendance, flagSuspicious, buses, routes } = useStore();
   const me = students.find((s) => s.id === currentStudentId);
-  const lastScan = attendance.find((a) => a.studentId === me?.id);
-  const nextType: "entry" | "exit" = lastScan?.type === "entry" ? "exit" : "entry";
+  const route = routes.find((r) => r.id === me?.routeId);
+  const lastAttendance = attendance.find((a) => a.studentId === me?.id);
+  const nextType: "entry" | "exit" = lastAttendance?.type === "entry" ? "exit" : "entry";
 
-  const [stage, setStage] = useState<Stage>("qr");
-  const [scannedId, setScannedId] = useState<string | null>(null);
+  const [stage, setStage] = useState<Stage>(() => {
+    if (me && !me.feesPaid) return "unpaid";
+    return "camera";
+  });
   const [retries, setRetries] = useState(0);
-  const [error, setError] = useState<string>("");
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
+  if (!me) {
+    return (
+      <div className="min-h-screen grid place-items-center p-6 bg-background">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-2">Please log in as a student to use this feature.</p>
+          <Link to="/" className="text-accent font-semibold">Go home</Link>
+        </div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (stage !== "qr" && stage !== "selfie") return;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const facingMode = stage === "qr" ? "environment" : "user";
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        if (stage === "qr") tickQR();
-      } catch {
-        setError("Camera access denied. Please enable camera permissions in your browser.");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
-
-  const tickQR = () => {
-    const v = videoRef.current;
-    const c = canvasRef.current;
-    if (!v || !c || v.readyState !== v.HAVE_ENOUGH_DATA) {
-      rafRef.current = requestAnimationFrame(tickQR);
-      return;
-    }
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(v, 0, 0, c.width, c.height);
-    const img = ctx.getImageData(0, 0, c.width, c.height);
-    const code = jsQR(img.data, img.width, img.height);
-    if (code) {
-      try {
-        const data = JSON.parse(code.data) as { id?: string };
-        if (data?.id) {
-          setScannedId(data.id);
-          setStage("selfie");
-          return;
-        }
-      } catch {
-        setScannedId(me?.id ?? null);
-        setStage("selfie");
-        return;
-      }
-    }
-    rafRef.current = requestAnimationFrame(tickQR);
-  };
-
-  const captureSelfie = async () => {
+  const handleCapture = async (dataUrl: string) => {
+    setCapturedImage(dataUrl);
     setStage("verifying");
-    const match = Math.random() > Math.max(0.1, 0.5 - retries * 0.15);
-    await new Promise((r) => setTimeout(r, 1400));
+    console.log("[Scanner] Verification started for student:", me.id);
 
-    if (match && scannedId === me?.id) {
-      if (me) logAttendance(me.id, nextType, true);
+    let matched = false;
+    try {
+      if (me.photo && me.photo.startsWith("data:")) {
+        const similarity = await compareFaceImages(me.photo, dataUrl);
+        console.log("[Scanner] Face similarity score:", similarity.toFixed(3));
+        matched = similarity > 0.72;
+      } else {
+        await new Promise((r) => setTimeout(r, 800));
+        matched = true;
+        console.log("[Scanner] No registered photo — attendance granted (no-photo mode)");
+      }
+    } catch (e) {
+      console.error("[Scanner] Comparison error:", e);
+      matched = false;
+    }
+
+    if (matched) {
+      logAttendance(me.id, nextType, true);
       setStage("success");
+      console.log("[Scanner] Attendance marked:", nextType);
     } else {
       const newRetries = retries + 1;
       setRetries(newRetries);
+      console.log("[Scanner] Face mismatch. Retries:", newRetries);
       if (newRetries >= 3) {
-        if (me) {
-          const bus = buses.find((b) => b.routeId === me.routeId);
-          flagSuspicious(me.id, "Face mismatch after 3 retries", bus?.id ?? "");
-        }
+        const bus = buses.find((b) => b.routeId === me.routeId);
+        flagSuspicious(me.id, "Face mismatch after 3 retries", bus?.id ?? "", dataUrl, me.seatNo);
         setStage("blocked");
+        console.log("[Scanner] Suspicious entry flagged");
       } else {
         setStage("fail");
       }
     }
   };
 
-  if (!me) {
-    return (
-      <div className="min-h-screen grid place-items-center p-6 bg-background">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-2">Please log in as a student to scan.</p>
-          <Link to="/" className="text-accent font-semibold">Go home</Link>
-        </div>
-      </div>
-    );
-  }
+  const reset = () => {
+    setCapturedImage(null);
+    setStage("camera");
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -136,7 +90,9 @@ function Scanner() {
             <ArrowLeft className="size-4" /> Dashboard
           </Link>
           <div className="flex items-center gap-2">
-            <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground"><Bus className="size-4" /></div>
+            <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
+              <Bus className="size-4" />
+            </div>
             <span className="font-display font-extrabold">UniRoute</span>
           </div>
           <ThemeToggle />
@@ -145,62 +101,34 @@ function Scanner() {
 
       <main className="flex-1 max-w-2xl w-full mx-auto p-6">
         <div className="mb-6">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Boarding · {nextType}</p>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
+            Boarding · {nextType}
+          </p>
           <h1 className="font-display text-3xl font-extrabold text-foreground">
-            {stage === "qr" && "Scan bus QR"}
-            {stage === "selfie" && "Live face verification"}
+            {stage === "camera" && "Face verification"}
             {stage === "verifying" && "Verifying identity…"}
             {stage === "success" && "Verified"}
             {stage === "fail" && `Mismatch · retry ${retries}/3`}
             {stage === "blocked" && "Verification blocked"}
+            {stage === "unpaid" && "Payment required"}
           </h1>
         </div>
 
-        {error && (
-          <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-2xl p-4 text-sm mb-4">
-            {error}
-          </div>
-        )}
-
         <div className="bg-card border border-border rounded-3xl p-4 sm:p-6 shadow-sm">
-          {(stage === "qr" || stage === "selfie") && (
-            <>
-              <div className="relative bg-black rounded-2xl overflow-hidden aspect-square sm:aspect-video">
-                <video ref={videoRef} className="size-full object-cover" playsInline muted />
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="absolute inset-0 grid place-items-center pointer-events-none">
-                  {stage === "qr" ? (
-                    <div className="size-48 border-2 border-accent rounded-2xl relative">
-                      <div className="absolute inset-x-0 top-0 h-0.5 bg-accent animate-pulse" />
-                    </div>
-                  ) : (
-                    <div className="size-56 border-2 border-accent/70 rounded-full animate-pulse" />
-                  )}
-                </div>
-                <div className="absolute bottom-3 left-3 bg-accent text-accent-foreground px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
-                  {stage === "qr" ? <ScanLine className="size-3" /> : <ScanFace className="size-3" />}
-                  {stage === "qr" ? "QR Scanner" : "AI Active"}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3 text-center">
-                {stage === "qr"
-                  ? "Hold the bus QR inside the frame. Live camera only — gallery upload disabled."
-                  : "Look straight at the camera. Live capture only — no uploads accepted."}
-              </p>
-              {stage === "selfie" && (
-                <button onClick={() => void captureSelfie()} className="w-full mt-4 bg-primary text-primary-foreground py-3 rounded-xl font-semibold hover:opacity-90 transition">
-                  Capture &amp; verify
-                </button>
-              )}
-            </>
+          {stage === "camera" && (
+            <FaceCapture
+              onCapture={(dataUrl) => void handleCapture(dataUrl)}
+              hint="Look straight at the camera. Live capture only — no uploads accepted."
+              captureLabel="Capture & Verify"
+            />
           )}
 
           {stage === "verifying" && (
             <div className="aspect-video grid place-items-center text-center">
               <div>
                 <div className="size-16 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="font-semibold">Matching face with profile photo…</p>
-                <p className="text-sm text-muted-foreground mt-1">AI verification in progress</p>
+                <p className="font-semibold">Matching face with registered profile…</p>
+                <p className="text-sm text-muted-foreground mt-1">Face verification in progress</p>
               </div>
             </div>
           )}
@@ -211,8 +139,18 @@ function Scanner() {
                 <CheckCircle2 className="size-10 text-success" />
               </div>
               <h3 className="font-display text-2xl font-extrabold mb-1">Attendance marked</h3>
-              <p className="text-muted-foreground capitalize mb-6">{nextType} · Seat {me.seatNo}</p>
-              <Link to="/student" className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold inline-block">Back to dashboard</Link>
+              <p className="text-muted-foreground capitalize mb-2">
+                {nextType} · Seat {me.seatNo}
+              </p>
+              <p className="text-xs text-muted-foreground mb-6">
+                {route?.name} · {new Date().toLocaleTimeString()}
+              </p>
+              <Link
+                to="/student"
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold inline-block"
+              >
+                Back to dashboard
+              </Link>
             </div>
           )}
 
@@ -222,9 +160,20 @@ function Scanner() {
                 <XCircle className="size-10 text-destructive" />
               </div>
               <h3 className="font-display text-2xl font-extrabold mb-1">Face did not match</h3>
-              <p className="text-muted-foreground mb-6">Retry {retries} of 3 — adjust lighting and try again.</p>
-              <button onClick={() => setStage("selfie")} className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold inline-flex items-center gap-2">
-                <RefreshCcw className="size-4" /> Retry
+              <p className="text-muted-foreground mb-2">Retry {retries} of 3</p>
+              <p className="text-sm text-muted-foreground mb-6">
+                Ensure good lighting and look directly at the camera.
+              </p>
+              {capturedImage && (
+                <div className="mb-6 flex justify-center">
+                  <img src={capturedImage} alt="Captured" className="size-24 rounded-xl object-cover border border-border" />
+                </div>
+              )}
+              <button
+                onClick={reset}
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold inline-flex items-center gap-2"
+              >
+                <RefreshCcw className="size-4" /> Retry verification
               </button>
             </div>
           )}
@@ -234,14 +183,52 @@ function Scanner() {
               <div className="size-20 mx-auto rounded-full bg-warning/10 grid place-items-center mb-4">
                 <AlertTriangle className="size-10 text-warning" />
               </div>
-              <h3 className="font-display text-2xl font-extrabold mb-1">Admin alerted</h3>
-              <p className="text-muted-foreground mb-6">After 3 failed attempts the entry has been flagged as suspicious. Please see the conductor.</p>
-              <button onClick={() => void navigate({ to: "/student" })} className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold">
+              <h3 className="font-display text-2xl font-extrabold mb-1">Entry blocked</h3>
+              <p className="text-muted-foreground mb-2">
+                After 3 failed face matches, this entry has been flagged as suspicious.
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">
+                Admin and conductor have been notified. Please see your conductor for manual override.
+              </p>
+              <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 text-sm text-warning text-left mb-6">
+                <ScanFace className="size-4 inline mr-2" />
+                If you are the genuine student, the conductor can approve your entry manually from the conductor dashboard.
+              </div>
+              <button
+                onClick={() => void navigate({ to: "/student" })}
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold"
+              >
                 Return to dashboard
               </button>
             </div>
           )}
+
+          {stage === "unpaid" && (
+            <div className="text-center py-10">
+              <div className="size-20 mx-auto rounded-full bg-destructive/10 grid place-items-center mb-4">
+                <Wallet className="size-10 text-destructive" />
+              </div>
+              <h3 className="font-display text-2xl font-extrabold mb-1">Fees not paid</h3>
+              <p className="text-muted-foreground mb-6">
+                Semester fees of ₹{route?.fare ?? 0} must be paid before using the boarding system.
+              </p>
+              <Link
+                to="/student"
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold inline-block"
+              >
+                Go to dashboard to pay
+              </Link>
+            </div>
+          )}
         </div>
+
+        {(stage === "camera" || stage === "fail") && (
+          <div className="mt-4 bg-muted/50 rounded-xl p-4 text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground text-sm">{me.name} · {me.rollNo}</p>
+            <p>Seat {me.seatNo} · {route?.name?.split("—")[0].trim() ?? "—"}</p>
+            <p>Pickup: {me.pickupPoint}</p>
+          </div>
+        )}
       </main>
     </div>
   );

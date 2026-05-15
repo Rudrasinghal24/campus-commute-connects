@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Bus, GraduationCap, ShieldCheck, UserCog, ArrowRight, QrCode, ScanFace, MapPin } from "lucide-react";
+import { Bus, GraduationCap, ShieldCheck, UserCog, ArrowRight, ScanFace, MapPin, Fingerprint } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -77,7 +77,7 @@ function Landing() {
                 <h3 className="font-display text-2xl font-extrabold mb-6">Morning In-Bound</h3>
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   <Mini icon={<MapPin className="size-3.5" />} label="Stops" value="04" />
-                  <Mini icon={<QrCode className="size-3.5" />} label="Boarded" value="32" />
+                  <Mini icon={<Fingerprint className="size-3.5" />} label="Boarded" value="32" />
                   <Mini icon={<ScanFace className="size-3.5" />} label="Verified" value="100%" />
                 </div>
                 <div className="bg-background/10 rounded-2xl p-4 backdrop-blur">

@@ -4,25 +4,24 @@ import { useStore } from "@/lib/store";
 import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/stat-card";
 import { SeatGrid } from "@/components/seat-grid";
-import { Bus, Route as RouteIcon, Users, Wallet, AlertTriangle, Plus, Trash2, ShieldCheck, Armchair } from "lucide-react";
+import { Bus, Route as RouteIcon, Users, Wallet, AlertTriangle, Plus, Trash2, ShieldCheck, Armchair, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Tab = "overview" | "buses" | "routes" | "students" | "seats" | "payments" | "attendance" | "alerts";
+type Tab = "overview" | "buses" | "routes" | "students" | "seats" | "payments" | "attendance" | "alerts" | "overrides";
 
 function AdminPage() {
-  const { buses, routes, students, payments, attendance, suspicious, addBus, removeBus, addRoute, removeRoute, assignSeat } = useStore();
+  const { buses, routes, students, payments, attendance, suspicious, addBus, removeBus, addRoute, removeRoute, assignSeat, overrides } = useStore();
   const [tab, setTab] = useState<Tab>("overview");
   const totalRevenue = payments.reduce((s, p) => s + p.amount, 0);
   const dueCount = students.filter((s) => !s.feesPaid).length;
+  const unresolvedAlerts = suspicious.filter((x) => !x.resolved).length;
 
-  const nav = [
-    { to: "/admin", label: "Admin", icon: <ShieldCheck className="size-3.5" /> },
-  ];
+  const nav = [{ to: "/admin", label: "Admin", icon: <ShieldCheck className="size-3.5" /> }];
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "overview", label: "Overview", icon: <Bus className="size-4" /> },
     { id: "buses", label: "Buses", icon: <Bus className="size-4" /> },
     { id: "routes", label: "Routes", icon: <RouteIcon className="size-4" /> },
@@ -30,7 +29,8 @@ function AdminPage() {
     { id: "seats", label: "Seat allocation", icon: <Armchair className="size-4" /> },
     { id: "payments", label: "Payments", icon: <Wallet className="size-4" /> },
     { id: "attendance", label: "Attendance", icon: <Users className="size-4" /> },
-    { id: "alerts", label: "Suspicious", icon: <AlertTriangle className="size-4" /> },
+    { id: "alerts", label: "Suspicious", icon: <AlertTriangle className="size-4" />, badge: unresolvedAlerts },
+    { id: "overrides", label: "Overrides", icon: <CheckCircle2 className="size-4" />, badge: overrides.length },
   ];
 
   return (
@@ -48,6 +48,9 @@ function AdminPage() {
                 }`}
               >
                 {t.icon} {t.label}
+                {t.badge !== undefined && t.badge > 0 && (
+                  <span className="ml-auto size-5 bg-destructive text-white rounded-full text-[10px] font-bold grid place-items-center shrink-0">{t.badge}</span>
+                )}
               </button>
             ))}
           </div>
@@ -60,17 +63,23 @@ function AdminPage() {
                 <StatCard label="Total Buses" value={buses.length} hint={`${routes.length} routes`} tone="primary" icon={<Bus className="size-4" />} />
                 <StatCard label="Students" value={students.length} hint={`${dueCount} fees due`} tone="accent" icon={<Users className="size-4" />} />
                 <StatCard label="Revenue" value={`₹${totalRevenue.toLocaleString()}`} hint={`${payments.length} payments`} tone="success" icon={<Wallet className="size-4" />} />
-                <StatCard label="Alerts" value={suspicious.length} hint="Suspicious entries" tone="danger" icon={<AlertTriangle className="size-4" />} />
+                <StatCard label="Alerts" value={unresolvedAlerts} hint="Unresolved entries" tone="danger" icon={<AlertTriangle className="size-4" />} />
               </div>
               <Panel title="Latest attendance">
-                <Table headers={["Student", "Type", "Verified", "Time"]}>
+                <Table headers={["Student", "Type", "Method", "Time"]}>
                   {attendance.slice(0, 8).map((a) => {
                     const s = students.find((x) => x.id === a.studentId);
                     return (
                       <tr key={a.id} className="border-b border-border last:border-0">
                         <td className="py-3 text-sm font-medium">{s?.name ?? "—"}</td>
                         <td className="py-3 text-sm capitalize">{a.type}</td>
-                        <td className="py-3"><Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Verified" : "Failed"}</Badge></td>
+                        <td className="py-3">
+                          {a.conductorOverride ? (
+                            <Badge tone="primary">Override</Badge>
+                          ) : (
+                            <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>
+                          )}
+                        </td>
                         <td className="py-3 text-xs text-muted-foreground">{new Date(a.ts).toLocaleString()}</td>
                       </tr>
                     );
@@ -118,7 +127,7 @@ function AdminPage() {
 
           {tab === "students" && (
             <Panel title="Students">
-              <Table headers={["Name", "Roll", "Branch", "Route", "Seat", "Fees"]}>
+              <Table headers={["Name", "Roll", "Branch", "Route", "Seat", "Fees", "Photo"]}>
                 {students.map((s) => (
                   <tr key={s.id} className="border-b border-border last:border-0">
                     <td className="py-3 text-sm font-semibold">{s.name}</td>
@@ -127,6 +136,13 @@ function AdminPage() {
                     <td className="py-3 text-sm">{routes.find((r) => r.id === s.routeId)?.name.split("—")[0].trim()}</td>
                     <td className="py-3 text-sm font-mono">{s.seatNo}</td>
                     <td className="py-3"><Badge tone={s.feesPaid ? "success" : "danger"}>{s.feesPaid ? "Paid" : "Due"}</Badge></td>
+                    <td className="py-3">
+                      {s.photo ? (
+                        <img src={s.photo} alt={s.name} className="size-8 rounded-lg object-cover border border-border" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">None</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </Table>
@@ -155,14 +171,20 @@ function AdminPage() {
 
           {tab === "attendance" && (
             <Panel title="All attendance logs">
-              <Table headers={["Student", "Type", "Verified", "Time"]}>
+              <Table headers={["Student", "Type", "Method", "Time"]}>
                 {attendance.map((a) => {
                   const s = students.find((x) => x.id === a.studentId);
                   return (
                     <tr key={a.id} className="border-b border-border last:border-0">
                       <td className="py-3 text-sm font-medium">{s?.name ?? "—"}</td>
                       <td className="py-3 text-sm capitalize">{a.type}</td>
-                      <td className="py-3"><Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Verified" : "Failed"}</Badge></td>
+                      <td className="py-3">
+                        {a.conductorOverride ? (
+                          <Badge tone="primary">Override</Badge>
+                        ) : (
+                          <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>
+                        )}
+                      </td>
                       <td className="py-3 text-xs text-muted-foreground">{new Date(a.ts).toLocaleString()}</td>
                     </tr>
                   );
@@ -176,23 +198,65 @@ function AdminPage() {
               {suspicious.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">No alerts. All boardings verified.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {suspicious.map((x) => {
                     const s = students.find((y) => y.id === x.studentId);
                     return (
-                      <div key={x.id} className="flex items-start justify-between gap-4 p-4 bg-destructive/5 border border-destructive/20 rounded-2xl">
-                        <div className="flex items-start gap-3">
-                          <div className="size-10 rounded-xl bg-destructive/10 text-destructive grid place-items-center"><AlertTriangle className="size-5" /></div>
-                          <div>
-                            <p className="font-semibold">{s?.name ?? "Unknown"} <span className="text-muted-foreground font-normal text-sm">· {s?.rollNo}</span></p>
+                      <div key={x.id} className={`flex items-start gap-4 p-4 border rounded-2xl flex-wrap ${x.resolved ? "bg-muted/30 border-border opacity-60" : "bg-destructive/5 border-destructive/20"}`}>
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <div className="size-10 rounded-xl bg-destructive/10 text-destructive grid place-items-center shrink-0">
+                            <AlertTriangle className="size-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold">
+                              {s?.name ?? "Unknown"}{" "}
+                              <span className="text-muted-foreground font-normal text-sm">· {s?.rollNo}</span>
+                            </p>
                             <p className="text-sm text-muted-foreground">{x.reason}</p>
+                            {x.seatNo && <p className="text-xs text-muted-foreground mt-0.5">Seat {x.seatNo} · {routes.find((r) => r.id === s?.routeId)?.name.split("—")[0].trim()}</p>}
                             <p className="text-xs text-muted-foreground mt-1">{new Date(x.ts).toLocaleString()}</p>
+                            {x.resolved && <Badge tone="success">Resolved by conductor</Badge>}
                           </div>
                         </div>
+                        {x.capturedImage && (
+                          <div className="shrink-0">
+                            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1">Captured image</p>
+                            <img src={x.capturedImage} alt="Suspicious capture" className="size-24 rounded-xl object-cover border border-border" />
+                          </div>
+                        )}
+                        {s?.photo && (
+                          <div className="shrink-0">
+                            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1">Registered photo</p>
+                            <img src={s.photo} alt="Registered" className="size-24 rounded-xl object-cover border border-border" />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </Panel>
+          )}
+
+          {tab === "overrides" && (
+            <Panel title="Conductor overrides">
+              {overrides.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">No conductor overrides recorded.</p>
+              ) : (
+                <Table headers={["Student", "Approved by", "Remarks", "Type", "Time"]}>
+                  {overrides.map((o) => {
+                    const s = students.find((x) => x.id === o.studentId);
+                    return (
+                      <tr key={o.id} className="border-b border-border last:border-0">
+                        <td className="py-3 text-sm font-semibold">{s?.name ?? "—"}</td>
+                        <td className="py-3 text-sm">{o.conductorName}</td>
+                        <td className="py-3 text-sm text-muted-foreground max-w-xs truncate">{o.remarks}</td>
+                        <td className="py-3 capitalize text-sm">{o.attendanceType}</td>
+                        <td className="py-3 text-xs text-muted-foreground">{new Date(o.ts).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </Table>
               )}
             </Panel>
           )}
@@ -230,7 +294,10 @@ function Table({ headers, children }: { headers: string[]; children: React.React
 }
 
 function Badge({ tone, children }: { tone: "success" | "danger" | "primary"; children: React.ReactNode }) {
-  const cls = tone === "success" ? "bg-success/10 text-success" : tone === "danger" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
+  const cls =
+    tone === "success" ? "bg-success/10 text-success" :
+    tone === "danger" ? "bg-destructive/10 text-destructive" :
+    "bg-primary/10 text-primary";
   return <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${cls}`}>{children}</span>;
 }
 

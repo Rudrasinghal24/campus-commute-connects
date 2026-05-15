@@ -41,6 +41,7 @@ export type AttendanceLog = {
   ts: number;
   busId: string;
   verified: boolean;
+  conductorOverride?: boolean;
 };
 
 export type Payment = {
@@ -57,7 +58,24 @@ export type SuspiciousEntry = {
   reason: string;
   ts: number;
   busId: string;
+  capturedImage?: string;
+  seatNo?: string;
+  resolved?: boolean;
 };
+
+export type ConductorOverride = {
+  id: string;
+  suspiciousEntryId: string;
+  studentId: string;
+  conductorName: string;
+  remarks: string;
+  ts: number;
+  attendanceType: "entry" | "exit";
+};
+
+export type AddStudentResult =
+  | { ok: true; student: Student }
+  | { ok: false; error: string };
 
 type State = {
   role: Role;
@@ -68,20 +86,23 @@ type State = {
   attendance: AttendanceLog[];
   payments: Payment[];
   suspicious: SuspiciousEntry[];
+  overrides: ConductorOverride[];
 
   setRole: (r: Role) => void;
   loginStudent: (id: string) => void;
   logout: () => void;
-  addStudent: (s: Omit<Student, "id" | "seatNo" | "feesPaid">) => Student;
+  addStudent: (s: Omit<Student, "id" | "seatNo" | "feesPaid">) => AddStudentResult;
   updateStudent: (id: string, p: Partial<Student>) => void;
   addBus: (b: Omit<Bus, "id">) => void;
   removeBus: (id: string) => void;
   addRoute: (r: Omit<Route, "id">) => void;
   removeRoute: (id: string) => void;
   assignSeat: (studentId: string, seatNo: string) => void;
-  logAttendance: (studentId: string, type: "entry" | "exit", verified: boolean) => void;
+  logAttendance: (studentId: string, type: "entry" | "exit", verified: boolean, conductorOverride?: boolean) => void;
   payFees: (studentId: string, amount: number) => void;
-  flagSuspicious: (studentId: string, reason: string, busId: string) => void;
+  flagSuspicious: (studentId: string, reason: string, busId: string, capturedImage?: string, seatNo?: string) => string;
+  addOverride: (suspiciousEntryId: string, studentId: string, conductorName: string, remarks: string, attendanceType: "entry" | "exit") => void;
+  resolveSuspicious: (id: string) => void;
 };
 
 const seedRoutes: Route[] = [
@@ -119,7 +140,7 @@ const seedPayments: Payment[] = [
 ];
 
 const seedSuspicious: SuspiciousEntry[] = [
-  { id: "x1", studentId: "s3", reason: "Face mismatch after 3 retries", ts: now - 1000 * 60 * 60 * 26, busId: "b2" },
+  { id: "x1", studentId: "s3", reason: "Face mismatch after 3 retries", ts: now - 1000 * 60 * 60 * 26, busId: "b2", resolved: false },
 ];
 
 export const useStore = create<State>()(
@@ -133,14 +154,35 @@ export const useStore = create<State>()(
       attendance: seedAttendance,
       payments: seedPayments,
       suspicious: seedSuspicious,
+      overrides: [],
 
       setRole: (r) => set({ role: r }),
       loginStudent: (id) => set({ role: "student", currentStudentId: id }),
       logout: () => set({ role: null, currentStudentId: null }),
 
       addStudent: (s) => {
-        const id = "s" + (get().students.length + 1) + "_" + Date.now();
-        const used = new Set(get().students.filter((x) => x.routeId === s.routeId).map((x) => x.seatNo));
+        const existing = get().students;
+
+        if (!s.name.trim()) return { ok: false, error: "Full name is required." };
+        if (!s.rollNo.trim()) return { ok: false, error: "Roll number is required." };
+        if (!/^\d{10}$/.test(s.phone)) return { ok: false, error: "Student mobile must be a valid 10-digit number." };
+        if (!/^\d{10}$/.test(s.parentPhone)) return { ok: false, error: "Parent mobile must be a valid 10-digit number." };
+        if (s.phone === s.parentPhone) return { ok: false, error: "Student and parent mobile numbers must be different." };
+        if (!s.routeId) return { ok: false, error: "Please select a bus route." };
+        if (!s.pickupPoint) return { ok: false, error: "Please select a pickup point." };
+
+        if (existing.some((x) => x.rollNo.toLowerCase() === s.rollNo.toLowerCase())) {
+          return { ok: false, error: `Roll number ${s.rollNo} is already registered.` };
+        }
+        if (existing.some((x) => x.phone === s.phone)) {
+          return { ok: false, error: "This student mobile number is already registered." };
+        }
+        if (existing.some((x) => x.parentPhone === s.parentPhone)) {
+          return { ok: false, error: "This parent mobile number is already registered." };
+        }
+
+        const id = "s" + (existing.length + 1) + "_" + Date.now();
+        const used = new Set(existing.filter((x) => x.routeId === s.routeId).map((x) => x.seatNo));
         let seat = "";
         for (let row = 1; row <= 20 && !seat; row++) {
           for (const col of ["A", "B", "C", "D"]) {
@@ -149,9 +191,10 @@ export const useStore = create<State>()(
           }
         }
         const student: Student = { ...s, id, seatNo: seat || "—", feesPaid: false };
-        set({ students: [...get().students, student] });
-        return student;
+        set({ students: [...existing, student] });
+        return { ok: true, student };
       },
+
       updateStudent: (id, p) =>
         set({ students: get().students.map((s) => (s.id === id ? { ...s, ...p } : s)) }),
 
@@ -163,13 +206,13 @@ export const useStore = create<State>()(
       assignSeat: (studentId, seatNo) =>
         set({ students: get().students.map((s) => (s.id === studentId ? { ...s, seatNo } : s)) }),
 
-      logAttendance: (studentId, type, verified) => {
+      logAttendance: (studentId, type, verified, conductorOverride) => {
         const student = get().students.find((s) => s.id === studentId);
         if (!student) return;
         const bus = get().buses.find((b) => b.routeId === student.routeId);
         set({
           attendance: [
-            { id: "a_" + Date.now(), studentId, type, ts: Date.now(), busId: bus?.id ?? "", verified },
+            { id: "a_" + Date.now(), studentId, type, ts: Date.now(), busId: bus?.id ?? "", verified, conductorOverride: conductorOverride ?? false },
             ...get().attendance,
           ],
         });
@@ -185,14 +228,44 @@ export const useStore = create<State>()(
         });
       },
 
-      flagSuspicious: (studentId, reason, busId) =>
+      flagSuspicious: (studentId, reason, busId, capturedImage, seatNo) => {
+        const id = "x_" + Date.now();
+        const student = get().students.find((s) => s.id === studentId);
         set({
           suspicious: [
-            { id: "x_" + Date.now(), studentId, reason, ts: Date.now(), busId },
+            { id, studentId, reason, ts: Date.now(), busId, capturedImage, seatNo: seatNo ?? student?.seatNo, resolved: false },
             ...get().suspicious,
           ],
-        }),
+        });
+        return id;
+      },
+
+      addOverride: (suspiciousEntryId, studentId, conductorName, remarks, attendanceType) => {
+        const id = "ov_" + Date.now();
+        set({
+          overrides: [
+            { id, suspiciousEntryId, studentId, conductorName, remarks, ts: Date.now(), attendanceType },
+            ...get().overrides,
+          ],
+          suspicious: get().suspicious.map((x) =>
+            x.id === suspiciousEntryId ? { ...x, resolved: true } : x
+          ),
+        });
+        const student = get().students.find((s) => s.id === studentId);
+        if (student) {
+          const bus = get().buses.find((b) => b.routeId === student.routeId);
+          set({
+            attendance: [
+              { id: "a_ov_" + Date.now(), studentId, type: attendanceType, ts: Date.now(), busId: bus?.id ?? "", verified: false, conductorOverride: true },
+              ...get().attendance,
+            ],
+          });
+        }
+      },
+
+      resolveSuspicious: (id) =>
+        set({ suspicious: get().suspicious.map((x) => (x.id === id ? { ...x, resolved: true } : x)) }),
     }),
-    { name: "uniroute-store" }
+    { name: "uniroute-store-v2" }
   )
 );
