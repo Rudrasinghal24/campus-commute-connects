@@ -1,10 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/stat-card";
 import { SeatGrid } from "@/components/seat-grid";
-import { Bus, Route as RouteIcon, Users, Wallet, AlertTriangle, Plus, Trash2, ShieldCheck, Armchair, CheckCircle2 } from "lucide-react";
+import {
+  Bus, Route as RouteIcon, Users, Wallet, AlertTriangle, Plus, Trash2,
+  ShieldCheck, Armchair, CheckCircle2, ThumbsUp, ThumbsDown, RotateCcw,
+  Search, X,
+} from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -13,11 +18,25 @@ export const Route = createFileRoute("/admin")({
 type Tab = "overview" | "buses" | "routes" | "students" | "seats" | "payments" | "attendance" | "alerts" | "overrides";
 
 function AdminPage() {
-  const { buses, routes, students, payments, attendance, suspicious, addBus, removeBus, addRoute, removeRoute, assignSeat, overrides } = useStore();
+  const {
+    buses, routes, students, payments, attendance, suspicious,
+    addBus, removeBus, addRoute, removeRoute, assignSeat, overrides,
+    declinedForTrip, declineForTrip, undeclineForTrip, removeStudent, logAttendance,
+  } = useStore();
+
   const [tab, setTab] = useState<Tab>("overview");
+  const [studentQ, setStudentQ] = useState("");
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removeLoading, setRemoveLoading] = useState<string | null>(null);
+
   const totalRevenue = payments.reduce((s, p) => s + p.amount, 0);
   const dueCount = students.filter((s) => !s.feesPaid).length;
   const unresolvedAlerts = suspicious.filter((x) => !x.resolved).length;
+  const declinedSet = new Set(declinedForTrip);
+
+  const filteredStudents = students.filter((s) =>
+    (s.name + s.rollNo + s.branch).toLowerCase().includes(studentQ.toLowerCase())
+  );
 
   const nav = [{ to: "/admin", label: "Admin", icon: <ShieldCheck className="size-3.5" /> }];
 
@@ -33,9 +52,38 @@ function AdminPage() {
     { id: "overrides", label: "Overrides", icon: <CheckCircle2 className="size-4" />, badge: overrides.length },
   ];
 
+  const handleAllow = (studentId: string) => {
+    undeclineForTrip(studentId);
+    const student = students.find((s) => s.id === studentId);
+    const bus = buses.find((b) => b.routeId === student?.routeId);
+    logAttendance(studentId, "entry", false, true);
+    api.attendance.log({
+      id: "a_admin_" + Date.now(),
+      studentId, type: "entry", ts: Date.now(),
+      busId: bus?.id ?? "", verified: false, conductorOverride: true,
+    }).catch(console.error);
+  };
+
+  const handleDecline = (studentId: string) => {
+    declineForTrip(studentId);
+  };
+
+  const handleUndecline = (studentId: string) => {
+    undeclineForTrip(studentId);
+  };
+
+  const handleRemove = (studentId: string) => {
+    setRemoveLoading(studentId);
+    removeStudent(studentId);
+    api.students.remove(studentId).catch(console.error);
+    setConfirmRemoveId(null);
+    setRemoveLoading(null);
+  };
+
   return (
     <AppShell nav={nav} title="Admin Console">
       <div className="grid lg:grid-cols-12 gap-6">
+        {/* ── Sidebar ──────────────────────────────────────────────────── */}
         <aside className="lg:col-span-3">
           <div className="bg-card border border-border rounded-3xl p-3 sticky top-24">
             <p className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Sections</p>
@@ -57,6 +105,7 @@ function AdminPage() {
         </aside>
 
         <section className="lg:col-span-9 space-y-6">
+          {/* ── Overview ───────────────────────────────────────────────── */}
           {tab === "overview" && (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -74,11 +123,7 @@ function AdminPage() {
                         <td className="py-3 text-sm font-medium">{s?.name ?? "—"}</td>
                         <td className="py-3 text-sm capitalize">{a.type}</td>
                         <td className="py-3">
-                          {a.conductorOverride ? (
-                            <Badge tone="primary">Override</Badge>
-                          ) : (
-                            <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>
-                          )}
+                          {a.conductorOverride ? <Badge tone="primary">Override</Badge> : <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>}
                         </td>
                         <td className="py-3 text-xs text-muted-foreground">{new Date(a.ts).toLocaleString()}</td>
                       </tr>
@@ -89,6 +134,7 @@ function AdminPage() {
             </>
           )}
 
+          {/* ── Buses ──────────────────────────────────────────────────── */}
           {tab === "buses" && (
             <Panel title="Manage buses" action={<AddBusInline onAdd={addBus} routes={routes} />}>
               <Table headers={["Number", "Route", "Capacity", "Driver", "Conductor", ""]}>
@@ -108,6 +154,7 @@ function AdminPage() {
             </Panel>
           )}
 
+          {/* ── Routes ─────────────────────────────────────────────────── */}
           {tab === "routes" && (
             <Panel title="Manage routes" action={<AddRouteInline onAdd={addRoute} />}>
               <Table headers={["Name", "Stops", "Fare", ""]}>
@@ -125,32 +172,138 @@ function AdminPage() {
             </Panel>
           )}
 
+          {/* ── Students ───────────────────────────────────────────────── */}
           {tab === "students" && (
-            <Panel title="Students">
-              <Table headers={["Name", "Roll", "Branch", "Route", "Seat", "Fees", "Photo"]}>
-                {students.map((s) => (
-                  <tr key={s.id} className="border-b border-border last:border-0">
-                    <td className="py-3 text-sm font-semibold">{s.name}</td>
-                    <td className="py-3 text-sm font-mono">{s.rollNo}</td>
-                    <td className="py-3 text-sm">{s.branch} · {s.semester}</td>
-                    <td className="py-3 text-sm">{routes.find((r) => r.id === s.routeId)?.name.split("—")[0].trim()}</td>
-                    <td className="py-3 text-sm font-mono">{s.seatNo}</td>
-                    <td className="py-3"><Badge tone={s.feesPaid ? "success" : "danger"}>{s.feesPaid ? "Paid" : "Due"}</Badge></td>
-                    <td className="py-3">
-                      {s.photo ? (
-                        <img src={s.photo} alt={s.name} className="size-8 rounded-lg object-cover border border-border" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">None</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </Table>
-            </Panel>
+            <div className="space-y-4">
+              {declinedForTrip.length > 0 && (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-2xl px-4 py-3 text-sm flex items-center gap-2 text-destructive">
+                  <ThumbsDown className="size-4 shrink-0" />
+                  <span><strong>{declinedForTrip.length}</strong> student{declinedForTrip.length > 1 ? "s" : ""} currently declined from boarding. Declines reset on next trip.</span>
+                </div>
+              )}
+
+              <Panel
+                title={`Students (${filteredStudents.length})`}
+                action={
+                  <div className="relative">
+                    <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={studentQ}
+                      onChange={(e) => setStudentQ(e.target.value)}
+                      placeholder="Search name, roll, branch…"
+                      className="bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent w-56"
+                    />
+                  </div>
+                }
+              >
+                <div className="space-y-2 max-h-[36rem] overflow-y-auto -mx-2 px-2">
+                  {filteredStudents.map((s) => {
+                    const routeName = routes.find((r) => r.id === s.routeId)?.name.split("—")[0].trim() ?? "—";
+                    const isDeclined = declinedSet.has(s.id);
+                    const isConfirming = confirmRemoveId === s.id;
+                    const isRemoving = removeLoading === s.id;
+
+                    return (
+                      <div
+                        key={s.id}
+                        className={`flex items-center gap-3 p-3 rounded-2xl border transition ${isDeclined ? "bg-destructive/5 border-destructive/20" : "bg-muted/40 border-transparent"}`}
+                      >
+                        {/* Photo */}
+                        {s.photo ? (
+                          <img src={s.photo} alt={s.name} className="size-10 rounded-xl object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="size-10 rounded-xl bg-primary/10 text-primary grid place-items-center font-bold text-sm shrink-0">
+                            {s.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
+                          </div>
+                        )}
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0 grid sm:grid-cols-4 gap-x-4 gap-y-0.5">
+                          <div className="sm:col-span-2 min-w-0">
+                            <p className="text-sm font-semibold truncate">{s.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{s.rollNo} · {s.branch} Sem {s.semester}</p>
+                          </div>
+                          <div className="hidden sm:block">
+                            <p className="text-xs font-medium truncate">{routeName}</p>
+                            <p className="text-xs text-muted-foreground">Seat {s.seatNo} · {s.pickupPoint}</p>
+                          </div>
+                          <div className="hidden sm:flex items-center gap-2">
+                            <Badge tone={s.feesPaid ? "success" : "danger"}>{s.feesPaid ? "Paid" : "Due"}</Badge>
+                            {isDeclined && <Badge tone="danger">Declined</Badge>}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isDeclined ? (
+                            <button
+                              onClick={() => handleUndecline(s.id)}
+                              title="Undo decline"
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground text-xs font-semibold rounded-lg transition"
+                            >
+                              <RotateCcw className="size-3" /> Restore
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleAllow(s.id)}
+                                disabled={!s.feesPaid}
+                                title="Allow boarding — mark attendance entry"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-success text-white text-xs font-semibold rounded-lg hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <ThumbsUp className="size-3" /> Allow
+                              </button>
+                              <button
+                                onClick={() => handleDecline(s.id)}
+                                title="Decline boarding for this trip"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-destructive/10 text-destructive border border-destructive/20 text-xs font-semibold rounded-lg hover:bg-destructive/20 transition"
+                              >
+                                <ThumbsDown className="size-3" /> Decline
+                              </button>
+                            </>
+                          )}
+
+                          {isConfirming ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleRemove(s.id)}
+                                disabled={isRemoving}
+                                className="px-2.5 py-1.5 bg-destructive text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50"
+                              >
+                                {isRemoving ? "…" : "Confirm"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmRemoveId(null)}
+                                className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 transition text-muted-foreground"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmRemoveId(s.id)}
+                              title="Remove student from database"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredStudents.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">No students match your search.</p>
+                  )}
+                </div>
+              </Panel>
+            </div>
           )}
 
+          {/* ── Seats ──────────────────────────────────────────────────── */}
           {tab === "seats" && <SeatAssignment routes={routes} students={students} onAssign={assignSeat} />}
 
+          {/* ── Payments ───────────────────────────────────────────────── */}
           {tab === "payments" && (
             <Panel title="Payments">
               <Table headers={["Student", "Amount", "Status", "Date"]}>
@@ -169,6 +322,7 @@ function AdminPage() {
             </Panel>
           )}
 
+          {/* ── Attendance ─────────────────────────────────────────────── */}
           {tab === "attendance" && (
             <Panel title="All attendance logs">
               <Table headers={["Student", "Type", "Method", "Time"]}>
@@ -179,11 +333,7 @@ function AdminPage() {
                       <td className="py-3 text-sm font-medium">{s?.name ?? "—"}</td>
                       <td className="py-3 text-sm capitalize">{a.type}</td>
                       <td className="py-3">
-                        {a.conductorOverride ? (
-                          <Badge tone="primary">Override</Badge>
-                        ) : (
-                          <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>
-                        )}
+                        {a.conductorOverride ? <Badge tone="primary">Override</Badge> : <Badge tone={a.verified ? "success" : "danger"}>{a.verified ? "Face Match" : "Failed"}</Badge>}
                       </td>
                       <td className="py-3 text-xs text-muted-foreground">{new Date(a.ts).toLocaleString()}</td>
                     </tr>
@@ -193,6 +343,7 @@ function AdminPage() {
             </Panel>
           )}
 
+          {/* ── Suspicious alerts ──────────────────────────────────────── */}
           {tab === "alerts" && (
             <Panel title="Suspicious entries">
               {suspicious.length === 0 ? (
@@ -230,6 +381,28 @@ function AdminPage() {
                             <img src={s.photo} alt="Registered" className="size-24 rounded-xl object-cover border border-border" />
                           </div>
                         )}
+                        {!x.resolved && s && (
+                          <div className="w-full flex gap-2 pt-1">
+                            <button
+                              onClick={() => handleAllow(s.id)}
+                              className="flex items-center gap-2 bg-success text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition"
+                            >
+                              <ThumbsUp className="size-3.5" /> Allow boarding
+                            </button>
+                            <button
+                              onClick={() => handleDecline(s.id)}
+                              className="flex items-center gap-2 bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-destructive/20 transition"
+                            >
+                              <ThumbsDown className="size-3.5" /> Decline boarding
+                            </button>
+                            <button
+                              onClick={() => setConfirmRemoveId(s.id)}
+                              className="flex items-center gap-2 text-destructive border border-destructive/20 bg-destructive/5 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-destructive/20 transition ml-auto"
+                            >
+                              <Trash2 className="size-3.5" /> Remove student
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -238,6 +411,7 @@ function AdminPage() {
             </Panel>
           )}
 
+          {/* ── Overrides ──────────────────────────────────────────────── */}
           {tab === "overrides" && (
             <Panel title="Conductor overrides">
               {overrides.length === 0 ? (
@@ -262,6 +436,39 @@ function AdminPage() {
           )}
         </section>
       </div>
+
+      {/* ── Global remove confirmation modal ───────────────────────────── */}
+      {confirmRemoveId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 grid place-items-center p-4">
+          <div className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="size-12 rounded-full bg-destructive/10 grid place-items-center mx-auto mb-4">
+              <Trash2 className="size-6 text-destructive" />
+            </div>
+            <h3 className="font-display text-xl font-extrabold text-center mb-1">Remove student?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-2">
+              <strong>{students.find((s) => s.id === confirmRemoveId)?.name}</strong> will be permanently deleted from the database.
+            </p>
+            <p className="text-xs text-center text-destructive/70 bg-destructive/5 border border-destructive/20 rounded-xl p-2 mb-5">
+              This removes their attendance history, payments, and all records. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleRemove(confirmRemoveId)}
+                disabled={removeLoading === confirmRemoveId}
+                className="flex-1 bg-destructive text-white py-3 rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50"
+              >
+                {removeLoading === confirmRemoveId ? "Removing…" : "Remove permanently"}
+              </button>
+              <button
+                onClick={() => setConfirmRemoveId(null)}
+                className="px-5 bg-muted rounded-xl hover:bg-muted/80 transition text-sm font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
