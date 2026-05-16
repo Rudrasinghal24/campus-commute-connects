@@ -58,6 +58,9 @@ export const api = {
 
     update: (id: string, data: { feesPaid?: boolean; seatNo?: string; photo?: string }) =>
       call<{ ok: boolean }>(`/students/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+
+    remove: (id: string) =>
+      call<{ ok: boolean }>(`/students/${id}`, { method: "DELETE" }),
   },
 
   trips: {

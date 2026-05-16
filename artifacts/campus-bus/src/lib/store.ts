@@ -109,8 +109,12 @@ type State = {
   addRoute: (r: Omit<Route, "id">) => void;
   removeRoute: (id: string) => void;
   assignSeat: (studentId: string, seatNo: string) => void;
+  declinedForTrip: string[];
   startTrip: (busId: string, routeId: string) => string;
   endTrip: (busId: string) => void;
+  declineForTrip: (studentId: string) => void;
+  undeclineForTrip: (studentId: string) => void;
+  removeStudent: (id: string) => void;
   logAttendance: (studentId: string, type: "entry" | "exit", verified: boolean, conductorOverride?: boolean) => void;
   payFees: (studentId: string, amount: number) => void;
   flagSuspicious: (studentId: string, reason: string, busId: string, capturedImage?: string, seatNo?: string) => string;
@@ -165,6 +169,7 @@ export const useStore = create<State>()(
       buses: seedBuses,
       routes: seedRoutes,
       trips: [],
+      declinedForTrip: [],
       attendance: seedAttendance,
       payments: seedPayments,
       suspicious: seedSuspicious,
@@ -246,6 +251,7 @@ export const useStore = create<State>()(
             ...get().trips.filter((t) => !(t.busId === busId && t.status === "active")),
             { id, busId, routeId, status: "active", startedAt: Date.now() },
           ],
+          declinedForTrip: [],
         });
         return id;
       },
@@ -257,8 +263,24 @@ export const useStore = create<State>()(
               ? { ...t, status: "ended", endedAt: Date.now() }
               : t
           ),
+          declinedForTrip: [],
         });
       },
+
+      declineForTrip: (studentId) =>
+        set({ declinedForTrip: [...new Set([...get().declinedForTrip, studentId])] }),
+
+      undeclineForTrip: (studentId) =>
+        set({ declinedForTrip: get().declinedForTrip.filter((id) => id !== studentId) }),
+
+      removeStudent: (id) =>
+        set({
+          students: get().students.filter((s) => s.id !== id),
+          attendance: get().attendance.filter((a) => a.studentId !== id),
+          payments: get().payments.filter((p) => p.studentId !== id),
+          suspicious: get().suspicious.filter((x) => x.studentId !== id),
+          declinedForTrip: get().declinedForTrip.filter((sid) => sid !== id),
+        }),
 
       logAttendance: (studentId, type, verified, conductorOverride) => {
         const student = get().students.find((s) => s.id === studentId);

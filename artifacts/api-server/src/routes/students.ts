@@ -152,4 +152,21 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await db.select({ id: studentsTable.id }).from(studentsTable).where(eq(studentsTable.id, id!));
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Student not found." });
+      return;
+    }
+    await db.delete(studentsTable).where(eq(studentsTable.id, id!));
+    req.log.info({ studentId: id }, "Student removed from database");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to remove student");
+    res.status(500).json({ error: "Failed to remove student." });
+  }
+});
+
 export default router;
