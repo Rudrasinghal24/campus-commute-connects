@@ -33,6 +33,15 @@ export const routesTable = pgTable("routes", {
   fare: integer("fare").notNull(),
 });
 
+export const tripsTable = pgTable("trips", {
+  id: text("id").primaryKey(),
+  busId: text("bus_id").notNull(),
+  routeId: text("route_id").notNull(),
+  status: text("status").notNull().default("active"),
+  startedAt: bigint("started_at", { mode: "number" }).notNull(),
+  endedAt: bigint("ended_at", { mode: "number" }),
+});
+
 export const attendanceLogsTable = pgTable("attendance_logs", {
   id: text("id").primaryKey(),
   studentId: text("student_id").notNull(),
@@ -75,6 +84,7 @@ export const conductorOverridesTable = pgTable("conductor_overrides", {
 export type DbStudent = typeof studentsTable.$inferSelect;
 export type DbBus = typeof busesTable.$inferSelect;
 export type DbRoute = typeof routesTable.$inferSelect;
+export type DbTrip = typeof tripsTable.$inferSelect;
 export type DbAttendanceLog = typeof attendanceLogsTable.$inferSelect;
 export type DbPayment = typeof paymentsTable.$inferSelect;
 export type DbSuspiciousEntry = typeof suspiciousEntriesTable.$inferSelect;

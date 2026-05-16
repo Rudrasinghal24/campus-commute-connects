@@ -5,7 +5,10 @@ import { api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { SeatGrid } from "@/components/seat-grid";
 import { StatCard } from "@/components/stat-card";
-import { UserCog, Users, CheckCircle2, ShieldCheck, Search, AlertTriangle, X } from "lucide-react";
+import {
+  UserCog, Users, CheckCircle2, ShieldCheck, Search, AlertTriangle,
+  X, Play, StopCircle, Clock, UserX,
+} from "lucide-react";
 
 export const Route = createFileRoute("/conductor")({
   component: ConductorPage,
@@ -14,7 +17,7 @@ export const Route = createFileRoute("/conductor")({
 type Tab = "students" | "alerts";
 
 function ConductorPage() {
-  const { students, buses, routes, attendance, logAttendance, suspicious, addOverride, overrides } = useStore();
+  const { students, buses, routes, attendance, trips, startTrip, endTrip, logAttendance, suspicious, addOverride, overrides } = useStore();
   const [busId, setBusId] = useState(buses[0]?.id ?? "");
   const [tab, setTab] = useState<Tab>("students");
   const bus = buses.find((b) => b.id === busId);
@@ -22,21 +25,61 @@ function ConductorPage() {
   const onRoute = students.filter((s) => s.routeId === bus?.routeId);
   const [q, setQ] = useState("");
   const filtered = onRoute.filter((s) => (s.name + s.rollNo).toLowerCase().includes(q.toLowerCase()));
-
   const [overrideModal, setOverrideModal] = useState<{ suspiciousId: string; studentId: string; type: "entry" | "exit" } | null>(null);
   const [overrideRemarks, setOverrideRemarks] = useState("");
   const [conductorName, setConductorName] = useState(bus?.conductor ?? "");
+  const [tripLoading, setTripLoading] = useState(false);
+
+  const activeTrip = trips.find((t) => t.busId === busId && t.status === "active");
 
   const onboardSet = new Set(
-    attendance.filter((a) => a.busId === busId && a.type === "entry").map((a) => a.studentId)
+    attendance
+      .filter((a) => a.busId === busId && a.type === "entry")
+      .map((a) => a.studentId)
   );
 
+  const notBoardedPaid = onRoute.filter((s) => s.feesPaid && !onboardSet.has(s.id));
   const pendingAlerts = suspicious.filter((x) => {
     const student = students.find((s) => s.id === x.studentId);
     return student?.routeId === bus?.routeId && !x.resolved;
   });
 
   const nav = [{ to: "/conductor", label: "Conductor", icon: <UserCog className="size-3.5" /> }];
+
+  const handleStartTrip = async () => {
+    if (!bus || activeTrip || tripLoading) return;
+    setTripLoading(true);
+    startTrip(busId, bus.routeId);
+    api.trips.start(busId, bus.routeId).catch(console.error);
+    console.log(`[Conductor] Trip started for bus ${bus.number}`);
+    setTripLoading(false);
+  };
+
+  const handleEndTrip = async () => {
+    if (!activeTrip || tripLoading) return;
+    setTripLoading(true);
+    endTrip(busId);
+    api.trips.end(busId).catch(console.error);
+    console.log(`[Conductor] Trip ended for bus ${bus?.number}`);
+    setTripLoading(false);
+  };
+
+  const handleManualEntry = (studentId: string) => {
+    if (!activeTrip) return;
+    logAttendance(studentId, "entry", false, true);
+    const student = students.find((s) => s.id === studentId);
+    if (student) {
+      api.attendance.log({
+        id: "a_manual_" + Date.now(),
+        studentId,
+        type: "entry",
+        ts: Date.now(),
+        busId,
+        verified: false,
+        conductorOverride: true,
+      }).catch(console.error);
+    }
+  };
 
   const handleOverrideSubmit = () => {
     if (!overrideModal || !conductorName.trim()) return;
@@ -59,20 +102,65 @@ function ConductorPage() {
 
   return (
     <AppShell nav={nav} title="Conductor">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Active Bus</p>
           <h1 className="font-display text-3xl font-extrabold">{bus?.number} · {route?.name.split("—")[0].trim()}</h1>
         </div>
-        <select value={busId} onChange={(e) => setBusId(e.target.value)} className="bg-card border border-border rounded-xl px-4 py-2 text-sm">
+        <select
+          value={busId}
+          onChange={(e) => setBusId(e.target.value)}
+          className="bg-card border border-border rounded-xl px-4 py-2 text-sm"
+        >
           {buses.map((b) => <option key={b.id} value={b.id}>{b.number}</option>)}
         </select>
       </div>
 
+      {/* ── Trip lifecycle controls ─────────────────────────────────────── */}
+      <div className={`rounded-2xl border p-4 mb-5 flex flex-wrap items-center justify-between gap-4 transition ${activeTrip ? "bg-success/5 border-success/30" : "bg-muted/50 border-border"}`}>
+        <div className="flex items-center gap-3">
+          <div className={`size-10 rounded-xl grid place-items-center ${activeTrip ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+            {activeTrip ? <Play className="size-5 fill-current" /> : <Clock className="size-5" />}
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Trip Status</p>
+            <p className={`font-display text-lg font-extrabold ${activeTrip ? "text-success" : "text-muted-foreground"}`}>
+              {activeTrip ? "TRIP ACTIVE" : "NOT STARTED"}
+            </p>
+            {activeTrip && (
+              <p className="text-xs text-muted-foreground">Started {new Date(activeTrip.startedAt).toLocaleTimeString()}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => void handleStartTrip()}
+            disabled={!!activeTrip || tripLoading}
+            className="flex items-center gap-2 bg-success text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Play className="size-4 fill-current" /> Start Trip
+          </button>
+          <button
+            onClick={() => void handleEndTrip()}
+            disabled={!activeTrip || tripLoading}
+            className="flex items-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <StopCircle className="size-4" /> End Trip
+          </button>
+        </div>
+      </div>
+
+      {!activeTrip && (
+        <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 mb-5 text-sm text-warning flex items-center gap-2">
+          <AlertTriangle className="size-4 shrink-0" />
+          Students cannot board until you start the trip. Click <strong>Start Trip</strong> to open the attendance window.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Capacity" value={`${onboardSet.size}/${bus?.capacity ?? 0}`} hint="Currently boarded" tone="primary" icon={<Users className="size-4" />} />
         <StatCard label="On Route" value={onRoute.length} hint="Assigned students" tone="accent" icon={<UserCog className="size-4" />} />
-        <StatCard label="Verified" value={attendance.filter((a) => a.busId === busId && a.verified).length} hint="Today" tone="success" icon={<ShieldCheck className="size-4" />} />
+        <StatCard label="Absent" value={notBoardedPaid.length} hint={activeTrip ? "Not yet boarded" : "Trip not started"} tone={notBoardedPaid.length > 0 && activeTrip ? "danger" : "warning"} icon={<UserX className="size-4" />} />
         <StatCard label="Alerts" value={pendingAlerts.length} hint="Pending review" tone={pendingAlerts.length > 0 ? "danger" : "warning"} icon={<AlertTriangle className="size-4" />} />
       </div>
 
@@ -95,49 +183,88 @@ function ConductorPage() {
       </div>
 
       {tab === "students" && (
-        <div className="grid lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7 bg-card border border-border rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <h3 className="font-display text-lg font-extrabold">Student list</h3>
-              <div className="relative">
-                <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+        <div className="space-y-6">
+          {/* Empty seat alerts */}
+          {activeTrip && notBoardedPaid.length > 0 && (
+            <div className="bg-card border border-warning/40 rounded-3xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <UserX className="size-4 text-warning" />
+                <h3 className="font-display font-bold text-warning">Empty Seat Alerts ({notBoardedPaid.length})</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">These students are assigned to this bus but have not verified board yet.</p>
+              <div className="space-y-2">
+                {notBoardedPaid.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between p-3 bg-warning/5 border border-warning/20 rounded-xl">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.rollNo} · Seat {s.seatNo} · {s.pickupPoint}</p>
+                    </div>
+                    <button
+                      onClick={() => handleManualEntry(s.id)}
+                      className="shrink-0 px-3 py-1.5 bg-warning text-white text-xs font-semibold rounded-lg hover:opacity-90"
+                    >
+                      Mark present
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-              {filtered.map((s) => {
-                const isOn = onboardSet.has(s.id);
-                return (
-                  <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-muted rounded-2xl">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="size-10 rounded-xl bg-primary/10 text-primary grid place-items-center font-bold text-sm shrink-0">
-                        {s.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{s.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{s.rollNo} · Seat {s.seatNo} · {s.pickupPoint}</p>
-                        {!s.feesPaid && <span className="text-[10px] text-destructive font-bold">Fees unpaid</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isOn ? (
-                        <span className="px-2 py-1 bg-success/10 text-success text-[10px] font-bold rounded-md uppercase">Boarded</span>
-                      ) : (
-                        <button onClick={() => logAttendance(s.id, "entry", false, true)} className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg">
-                          Mark entry
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {filtered.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No students match.</p>}
-            </div>
-          </div>
+          )}
 
-          <div className="lg:col-span-5 bg-card border border-border rounded-3xl p-6 shadow-sm">
-            <h3 className="font-display text-lg font-extrabold mb-4">Occupied seats</h3>
-            {bus && <SeatGrid routeId={bus.routeId} />}
+          <div className="grid lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 bg-card border border-border rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                <h3 className="font-display text-lg font-extrabold">Student list</h3>
+                <div className="relative">
+                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                {filtered.map((s) => {
+                  const isOn = onboardSet.has(s.id);
+                  return (
+                    <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-muted rounded-2xl">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {s.photo ? (
+                          <img src={s.photo} alt={s.name} className="size-10 rounded-xl object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="size-10 rounded-xl bg-primary/10 text-primary grid place-items-center font-bold text-sm shrink-0">
+                            {s.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{s.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{s.rollNo} · Seat {s.seatNo} · {s.pickupPoint}</p>
+                          {!s.feesPaid && <span className="text-[10px] text-destructive font-bold">Fees unpaid</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isOn ? (
+                          <span className="px-2 py-1 bg-success/10 text-success text-[10px] font-bold rounded-md uppercase">Boarded</span>
+                        ) : !activeTrip ? (
+                          <span className="px-2 py-1 bg-muted-foreground/10 text-muted-foreground text-[10px] font-bold rounded-md uppercase">No trip</span>
+                        ) : (
+                          <button
+                            onClick={() => handleManualEntry(s.id)}
+                            disabled={!s.feesPaid}
+                            className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
+                          >
+                            Mark entry
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {filtered.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">No students match.</p>}
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 bg-card border border-border rounded-3xl p-6 shadow-sm">
+              <h3 className="font-display text-lg font-extrabold mb-4">Occupied seats</h3>
+              {bus && <SeatGrid routeId={bus.routeId} />}
+            </div>
           </div>
         </div>
       )}
@@ -167,9 +294,20 @@ function ConductorPage() {
                           <p className="text-sm text-destructive mt-1">{alert.reason}</p>
                           <p className="text-xs text-muted-foreground mt-1">{new Date(alert.ts).toLocaleString()}</p>
                         </div>
-                        {alert.capturedImage && (
-                          <img src={alert.capturedImage} alt="Captured" className="size-20 rounded-xl object-cover border border-border shrink-0" />
-                        )}
+                        <div className="flex gap-2 flex-wrap">
+                          {student?.photo && (
+                            <div className="text-center">
+                              <p className="text-[10px] text-muted-foreground mb-1">Registered</p>
+                              <img src={student.photo} alt="Registered" className="size-20 rounded-xl object-cover border border-border" />
+                            </div>
+                          )}
+                          {alert.capturedImage && (
+                            <div className="text-center">
+                              <p className="text-[10px] text-muted-foreground mb-1">Captured</p>
+                              <img src={alert.capturedImage} alt="Captured" className="size-20 rounded-xl object-cover border border-destructive/30" />
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="flex gap-2 mt-4 flex-wrap">
                         <button
@@ -179,7 +317,7 @@ function ConductorPage() {
                           }}
                           className="bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition"
                         >
-                          Approve — this is the genuine student
+                          Approve — genuine student
                         </button>
                       </div>
                     </div>
@@ -189,18 +327,12 @@ function ConductorPage() {
             })
           )}
 
-          {overrides.filter((o) => {
-            const student = students.find((s) => s.id === o.studentId);
-            return student?.routeId === bus?.routeId;
-          }).length > 0 && (
+          {overrides.filter((o) => { const s = students.find((x) => x.id === o.studentId); return s?.routeId === bus?.routeId; }).length > 0 && (
             <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
               <h3 className="font-display text-lg font-extrabold mb-4">Past overrides</h3>
               <div className="space-y-3">
                 {overrides
-                  .filter((o) => {
-                    const s = students.find((x) => x.id === o.studentId);
-                    return s?.routeId === bus?.routeId;
-                  })
+                  .filter((o) => { const s = students.find((x) => x.id === o.studentId); return s?.routeId === bus?.routeId; })
                   .map((o) => {
                     const s = students.find((x) => x.id === o.studentId);
                     return (
@@ -233,38 +365,20 @@ function ConductorPage() {
                 <X className="size-4" />
               </button>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">Conductor Name *</label>
-                <input
-                  value={conductorName}
-                  onChange={(e) => setConductorName(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                />
+                <input value={conductorName} onChange={(e) => setConductorName(e.target.value)} placeholder="Your name" className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">Remarks (optional)</label>
-                <textarea
-                  value={overrideRemarks}
-                  onChange={(e) => setOverrideRemarks(e.target.value)}
-                  placeholder="Conductor verified identity in person, student left ID at home, etc."
-                  rows={3}
-                  className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-                />
+                <textarea value={overrideRemarks} onChange={(e) => setOverrideRemarks(e.target.value)} placeholder="Conductor verified identity in person…" rows={3} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent resize-none" />
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={handleOverrideSubmit}
-                  disabled={!conductorName.trim()}
-                  className="flex-1 bg-primary text-primary-foreground py-3 rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50"
-                >
+                <button onClick={handleOverrideSubmit} disabled={!conductorName.trim()} className="flex-1 bg-primary text-primary-foreground py-3 rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50">
                   Approve & Mark Entry
                 </button>
-                <button onClick={() => setOverrideModal(null)} className="px-4 bg-muted rounded-xl hover:bg-muted/80 transition text-sm font-medium">
-                  Cancel
-                </button>
+                <button onClick={() => setOverrideModal(null)} className="px-4 bg-muted rounded-xl hover:bg-muted/80 transition text-sm font-medium">Cancel</button>
               </div>
             </div>
           </div>

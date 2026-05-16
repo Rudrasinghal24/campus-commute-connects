@@ -34,6 +34,15 @@ export type ApiStudent = {
   createdAt: number;
 };
 
+export type ApiTrip = {
+  id: string;
+  busId: string;
+  routeId: string;
+  status: "active" | "ended";
+  startedAt: number;
+  endedAt?: number | null;
+};
+
 export const api = {
   students: {
     register: (data: {
@@ -49,6 +58,17 @@ export const api = {
 
     update: (id: string, data: { feesPaid?: boolean; seatNo?: string; photo?: string }) =>
       call<{ ok: boolean }>(`/students/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+
+  trips: {
+    start: (busId: string, routeId: string) =>
+      call<ApiTrip>("/trips/start", { method: "POST", body: JSON.stringify({ busId, routeId }) }),
+
+    end: (busId: string) =>
+      call<{ ok: boolean }>("/trips/end", { method: "POST", body: JSON.stringify({ busId }) }),
+
+    getActive: (busId: string) =>
+      call<ApiTrip | null>(`/trips/active/${busId}`),
   },
 
   attendance: {

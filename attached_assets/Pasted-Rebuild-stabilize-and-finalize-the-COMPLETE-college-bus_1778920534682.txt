@@ -1,0 +1,503 @@
+Rebuild, stabilize, and finalize the COMPLETE college bus attendance and anti-fraud verification system into a SIMPLE, RELIABLE, and PRODUCTION-READY architecture.
+
+IMPORTANT GLOBAL RULES:
+
+* Focus on REAL WORKING LOGIC, not demo UI.
+* Prioritize reliability and anti-fraud protection over overengineered AI complexity.
+* Preserve already working backend/database/payment systems wherever possible.
+* Do NOT unnecessarily redesign unrelated UI.
+* Remove QR attendance system completely.
+* Remove old unstable face-api.js realtime descriptor loop system completely.
+* Use MediaPipe Face Detection with a stable capture-and-compare workflow.
+* Keep implementation lightweight, stable, mobile-friendly, and low-error.
+
+==================================================
+
+1. REQUIRED SYSTEM ARCHITECTURE
+   ==================================================
+
+Create ONLY 3 MAIN PANELS:
+
+1. STUDENT PANEL
+2. CONDUCTOR PANEL
+3. ADMIN PANEL
+
+Each must have:
+
+* separate login
+* role-based access
+* protected routes
+* separate dashboards
+
+==================================================
+2. REQUIRED TECHNOLOGY STACK
+============================
+
+Frontend:
+
+* React + TypeScript
+* MediaPipe Face Detection
+* navigator.mediaDevices.getUserMedia()
+
+Backend:
+
+* Node.js + Express
+* PostgreSQL
+
+Verification Architecture:
+
+* stable capture-and-compare workflow
+* no unstable continuous realtime descriptor loops
+* lightweight and reliable implementation
+
+==================================================
+3. STUDENT REGISTRATION SYSTEM
+==============================
+
+Student Registration Fields:
+
+* full name
+* roll number
+* branch
+* semester
+* student mobile number
+* parent mobile number
+* route
+* pickup point
+* password
+
+==================================================
+4. VALIDATION & LOOPHOLE PREVENTION
+===================================
+
+Implement strict validation.
+
+Prevent:
+
+* duplicate roll numbers
+* duplicate student mobile numbers
+* duplicate parent mobile numbers
+* duplicate registrations
+* invalid empty fields
+* invalid mobile numbers
+* malformed data
+
+Implement:
+
+* frontend validation
+* backend validation
+* PostgreSQL uniqueness constraints
+
+==================================================
+5. DUPLICATE FACE REGISTRATION PREVENTION
+=========================================
+
+Current loophole:
+A student can register using another student's face.
+
+Example:
+
+* Rudra already exists in DB
+* Yash registers using Rudra face
+
+THIS MUST BE BLOCKED.
+
+Implement:
+
+* during registration compare captured face against ALL registered student faces
+* if face already exists:
+
+  * reject registration
+  * show:
+    "This face is already registered with another account."
+
+Save suspicious duplicate registration attempts in PostgreSQL and show them in admin dashboard.
+
+==================================================
+6. LIVE CAMERA REGISTRATION
+===========================
+
+After registration form validation:
+
+* automatically open FRONT CAMERA
+* completely disable:
+
+  * gallery uploads
+  * file picker
+  * manual image uploads
+
+Use ONLY live webcam capture.
+
+Use:
+
+* MediaPipe Face Detection
+* navigator.mediaDevices.getUserMedia()
+* facingMode: "user"
+* autoplay
+* playsInline
+
+Camera Requirements:
+
+* Android Chrome compatible
+* iPhone Safari compatible
+* HTTPS compatible
+
+==================================================
+7. STUDENT FACE CAPTURE
+=======================
+
+Capture Requirements:
+
+* detect real human face
+* capture ONE clear live image
+* stable canvas frame extraction
+* proper image saving
+* prevent blank captures
+* ensure image preview works
+
+Store in PostgreSQL:
+
+* student image
+* verification metadata
+* student profile
+* assigned seat
+* payment status
+
+==================================================
+8. AFTER SUCCESSFUL REGISTRATION
+================================
+
+Show student:
+
+* registered details
+* assigned seat number
+* route details
+* payment status
+* registration success confirmation
+
+Prevent:
+
+* unwanted page refresh
+* broken redirects
+* duplicate submissions
+
+==================================================
+9. PAYMENT SYSTEM
+=================
+
+Preserve existing payment system.
+
+Requirements:
+
+* payment linked to student profile
+* unpaid students blocked from attendance system
+* payment status visible in dashboards
+* PostgreSQL persistence required
+
+==================================================
+10. TRIP LIFECYCLE SYSTEM
+=========================
+
+Create trip states:
+
+* NOT_STARTED
+* ACTIVE
+* ENDED
+
+Only conductor/admin can:
+
+* START TRIP
+* END TRIP
+
+==================================================
+11. START TRIP CONTROL
+======================
+
+When conductor/admin clicks START TRIP:
+
+* trip status becomes ACTIVE
+* attendance window opens
+* students can now verify attendance
+* timestamp saved
+
+Before trip starts:
+
+* students CANNOT verify attendance
+* START TRIP verification button disabled
+
+==================================================
+12. BUS ENTRY VERIFICATION
+==========================
+
+When student clicks START TRIP verification:
+
+* open front camera automatically
+* detect human face
+* capture ONE live image
+* compare with registered student image
+
+==================================================
+13. BUS ENVIRONMENT VERIFICATION
+================================
+
+VERY IMPORTANT ANTI-FRAUD FEATURE:
+
+Student verification image must contain:
+
+* student face
+  AND
+* visible bus environment
+
+AI should analyze whether image appears to be taken inside bus.
+
+Check for:
+
+* bus seats
+* bus windows
+* bus interior environment
+
+Reject:
+
+* hostel room
+* classroom
+* outside locations
+* unrelated environments
+
+This prevents:
+
+* remote selfie fraud
+* hostel attendance fraud
+* fake bus attendance
+
+==================================================
+14. ENTRY VERIFICATION RESULT
+=============================
+
+If:
+
+* face matches
+  AND
+* bus environment detected
+  AND
+* trip is ACTIVE
+
+Then:
+
+* mark student "AVAILABLE IN BUS"
+* save entry timestamp
+* mark seat occupied
+* save verification in PostgreSQL
+* stop camera stream
+* show success message
+
+==================================================
+15. END TRIP VERIFICATION
+=========================
+
+END TRIP verification should ONLY work:
+
+* when trip is ACTIVE
+* after successful START TRIP verification
+
+When student clicks END TRIP:
+
+* open camera again
+* capture live image
+* compare with registered student image
+* verify bus environment again
+
+If matched:
+
+* mark final attendance PRESENT
+* save exit timestamp
+* mark seat empty
+* save complete attendance history
+
+==================================================
+16. FRAUD / ILLEGAL PASSENGER DETECTION
+=======================================
+
+If:
+
+* face mismatch occurs
+* bus environment missing
+* duplicate face registration attempted
+* suspicious verification occurs
+
+Then:
+
+* reject attendance
+* save suspicious image
+* save suspicious logs in PostgreSQL
+
+Store:
+
+* timestamp
+* route
+* seat number
+* suspicious image
+* attempted student details
+
+Notify:
+
+* admin dashboard
+* conductor dashboard
+
+Also notify genuine student:
+"Another person may be occupying your assigned bus seat."
+
+==================================================
+17. EMPTY SEAT DETECTION
+========================
+
+If:
+
+* trip ACTIVE
+* assigned seat exists
+* no valid START TRIP verification occurs
+
+Then:
+
+* mark seat as POSSIBLY EMPTY
+* notify conductor dashboard
+* notify admin dashboard
+
+Message:
+"Assigned student has not verified bus entry."
+
+==================================================
+18. CONDUCTOR PANEL
+===================
+
+Conductor dashboard must show:
+
+* all students assigned to bus
+* occupied seats
+* empty seats
+* students verified IN BUS
+* absent students
+* suspicious activity
+* unpaid students
+
+Conductor must be able to:
+
+* manually mark attendance
+* override verification failure
+* add remarks
+
+==================================================
+19. ADMIN PANEL
+===============
+
+Admin dashboard must show:
+
+* all buses
+* all students
+* attendance analytics
+* suspicious activity logs
+* duplicate face attempts
+* seat occupancy
+* unpaid students
+* absent students
+* verification failures
+
+==================================================
+20. CAMERA & VERIFICATION STABILITY
+===================================
+
+Fix ALL current issues completely:
+
+* webcam initialization
+* loading loops
+* stuck verification
+* failed captures
+* blank images
+* image saving failures
+* async timing issues
+* camera cleanup
+* state update failures
+
+Ensure:
+
+* stable capture flow
+* reliable image saving
+* reliable comparison completion
+* no infinite loading states
+
+==================================================
+21. SECURITY & LOOPHOLE PREVENTION
+==================================
+
+Prevent:
+
+* fake attendance
+* duplicate registrations
+* gallery uploads
+* fake image uploads
+* unauthorized access
+* payment bypass
+* remote selfie fraud
+* duplicate active seat occupancy
+
+Use:
+
+* backend validation
+* protected APIs
+* role-based access
+* secure session handling
+
+==================================================
+22. MOBILE OPTIMIZATION
+=======================
+
+Ensure:
+
+* Android Chrome compatibility
+* iPhone Safari compatibility
+* responsive layouts
+* stable mobile camera performance
+* lightweight implementation
+* smooth verification experience
+
+==================================================
+23. DEBUGGING & RELIABILITY LOGS
+================================
+
+Add logs for:
+
+* camera initialized
+* face detected
+* bus environment detected
+* image captured
+* image saved
+* verification started
+* verification result
+* attendance marked
+* suspicious activity detected
+* database save success/failure
+
+==================================================
+24. FINAL VERIFICATION
+======================
+
+After implementation verify completely:
+
+* registration works correctly
+* login works correctly
+* duplicate student prevention works
+* duplicate face prevention works
+* live image capture works
+* images save correctly
+* bus environment detection works
+* START TRIP works
+* END TRIP works
+* attendance saves correctly
+* fraud detection works correctly
+* empty seat alerts work
+* conductor override works
+* admin alerts work
+* payment system still works
+* no gallery upload possible
+* no infinite loading remains
+* mobile camera works correctly
+* PostgreSQL persistence works correctly

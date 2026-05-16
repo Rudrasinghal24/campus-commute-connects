@@ -34,6 +34,15 @@ export type Route = {
   fare: number;
 };
 
+export type Trip = {
+  id: string;
+  busId: string;
+  routeId: string;
+  status: "active" | "ended";
+  startedAt: number;
+  endedAt?: number;
+};
+
 export type AttendanceLog = {
   id: string;
   studentId: string;
@@ -83,6 +92,7 @@ type State = {
   students: Student[];
   buses: Bus[];
   routes: Route[];
+  trips: Trip[];
   attendance: AttendanceLog[];
   payments: Payment[];
   suspicious: SuspiciousEntry[];
@@ -99,6 +109,8 @@ type State = {
   addRoute: (r: Omit<Route, "id">) => void;
   removeRoute: (id: string) => void;
   assignSeat: (studentId: string, seatNo: string) => void;
+  startTrip: (busId: string, routeId: string) => string;
+  endTrip: (busId: string) => void;
   logAttendance: (studentId: string, type: "entry" | "exit", verified: boolean, conductorOverride?: boolean) => void;
   payFees: (studentId: string, amount: number) => void;
   flagSuspicious: (studentId: string, reason: string, busId: string, capturedImage?: string, seatNo?: string) => string;
@@ -152,6 +164,7 @@ export const useStore = create<State>()(
       students: seedStudents,
       buses: seedBuses,
       routes: seedRoutes,
+      trips: [],
       attendance: seedAttendance,
       payments: seedPayments,
       suspicious: seedSuspicious,
@@ -226,6 +239,27 @@ export const useStore = create<State>()(
       assignSeat: (studentId, seatNo) =>
         set({ students: get().students.map((s) => (s.id === studentId ? { ...s, seatNo } : s)) }),
 
+      startTrip: (busId, routeId) => {
+        const id = "t_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+        set({
+          trips: [
+            ...get().trips.filter((t) => !(t.busId === busId && t.status === "active")),
+            { id, busId, routeId, status: "active", startedAt: Date.now() },
+          ],
+        });
+        return id;
+      },
+
+      endTrip: (busId) => {
+        set({
+          trips: get().trips.map((t) =>
+            t.busId === busId && t.status === "active"
+              ? { ...t, status: "ended", endedAt: Date.now() }
+              : t
+          ),
+        });
+      },
+
       logAttendance: (studentId, type, verified, conductorOverride) => {
         const student = get().students.find((s) => s.id === studentId);
         if (!student) return;
@@ -286,6 +320,6 @@ export const useStore = create<State>()(
       resolveSuspicious: (id) =>
         set({ suspicious: get().suspicious.map((x) => (x.id === id ? { ...x, resolved: true } : x)) }),
     }),
-    { name: "uniroute-store-v2" }
+    { name: "uniroute-store-v3" }
   )
 );

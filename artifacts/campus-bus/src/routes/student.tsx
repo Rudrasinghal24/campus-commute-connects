@@ -9,19 +9,21 @@ import { FaceCapture, compareFaceImages } from "@/components/face-capture";
 import {
   Bus, Wallet, History, Armchair, ScanFace, MapPin,
   CheckCircle2, XCircle, ShieldCheck, AlertTriangle,
-  RefreshCcw, X, Play, StopCircle, UserX,
+  RefreshCcw, X, Play, StopCircle, UserX, Clock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/student")({
   component: StudentPage,
 });
 
-type TripStage = "capture" | "verifying" | "success" | "fail" | "blocked" | "no_photo";
+type TripStage = "capture" | "verifying" | "success" | "fail" | "blocked" | "no_photo" | "no_active_trip";
 
 function StudentPage() {
-  const { students, currentStudentId, routes, attendance, payments, payFees, buses, logAttendance, flagSuspicious } = useStore();
+  const { students, currentStudentId, routes, attendance, payments, payFees, buses, trips, logAttendance, flagSuspicious } = useStore();
   const me = students.find((s) => s.id === currentStudentId) ?? students[0];
   const route = routes.find((r) => r.id === me?.routeId);
+  const myBus = buses.find((b) => b.routeId === me?.routeId);
+  const activeTrip = myBus ? trips.find((t) => t.busId === myBus.id && t.status === "active") : null;
   const myAttendance = attendance.filter((a) => a.studentId === me?.id);
   const myPayments = payments.filter((p) => p.studentId === me?.id);
   const lastEntry = [...myAttendance].filter((a) => a.type === "entry").sort((a, b) => b.ts - a.ts)[0];
@@ -42,7 +44,10 @@ function StudentPage() {
     setTripModal(type);
     setTripRetries(0);
     setLastScore(null);
-    if (!me.photo || !me.photo.startsWith("data:")) {
+
+    if (!activeTrip) {
+      setTripStage("no_active_trip");
+    } else if (!me.photo || !me.photo.startsWith("data:")) {
       setTripStage("no_photo");
     } else {
       setTripStage("capture");
@@ -71,7 +76,6 @@ function StudentPage() {
         console.log(`[Student] Face score=${score.toFixed(3)} threshold=0.82`);
         matched = score >= 0.82;
       } else {
-        console.warn("[Student] No registered photo — cannot verify");
         setTripStage("no_photo");
         return;
       }
@@ -81,7 +85,6 @@ function StudentPage() {
     }
 
     if (matched) {
-      const bus = buses.find((b) => b.routeId === me.routeId);
       const attendanceId = "a_" + Date.now();
       logAttendance(me.id, tripModal, true);
       api.attendance.log({
@@ -89,7 +92,7 @@ function StudentPage() {
         studentId: me.id,
         type: tripModal,
         ts: Date.now(),
-        busId: bus?.id ?? "",
+        busId: myBus?.id ?? "",
         verified: true,
       }).catch(console.error);
       console.log(`[Student] Attendance marked: ${tripModal}`);
@@ -99,15 +102,14 @@ function StudentPage() {
       setTripRetries(newRetries);
       console.log(`[Student] Face mismatch (score=${score.toFixed(3)}), retry ${newRetries}/3`);
       if (newRetries >= 3) {
-        const bus = buses.find((b) => b.routeId === me.routeId);
         const suspId = "x_" + Date.now();
-        flagSuspicious(me.id, "Face mismatch after 3 retries", bus?.id ?? "", dataUrl, me.seatNo);
+        flagSuspicious(me.id, "Face mismatch after 3 retries", myBus?.id ?? "", dataUrl, me.seatNo);
         api.suspicious.flag({
           id: suspId,
           studentId: me.id,
           reason: "Face mismatch after 3 retries",
           ts: Date.now(),
-          busId: bus?.id ?? "",
+          busId: myBus?.id ?? "",
           capturedImage: dataUrl,
           seatNo: me.seatNo,
         }).catch(console.error);
@@ -155,9 +157,17 @@ function StudentPage() {
 
           <div className="bg-card border border-border rounded-3xl p-6 shadow-sm space-y-3">
             <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Bus Boarding</p>
+
+            {/* Trip status indicator */}
+            <div className={`flex items-center gap-2 py-2 px-3 rounded-xl text-sm font-medium ${activeTrip ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+              {activeTrip ? <Play className="size-3.5 fill-current" /> : <Clock className="size-3.5" />}
+              {activeTrip ? `Trip active · started ${new Date(activeTrip.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No active trip"}
+            </div>
+
             <div className={`text-center py-3 rounded-2xl text-sm font-semibold ${isInBus ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
               {isInBus ? "🟢 Currently in bus" : "⭕ Not boarded"}
             </div>
+
             {!me.feesPaid ? (
               <div className="text-center py-3 bg-destructive/10 text-destructive rounded-2xl text-xs font-semibold">Fees unpaid — pay to enable boarding</div>
             ) : (
@@ -244,6 +254,7 @@ function StudentPage() {
         </section>
       </div>
 
+      {/* ── Trip verification modal ─────────────────────────────────────── */}
       {tripModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 grid place-items-center p-4">
           <div className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl">
@@ -259,6 +270,22 @@ function StudentPage() {
               </button>
             </div>
 
+            {tripStage === "no_active_trip" && (
+              <div className="py-8 text-center">
+                <div className="size-16 mx-auto rounded-full bg-muted grid place-items-center mb-4">
+                  <Clock className="size-9 text-muted-foreground" />
+                </div>
+                <h4 className="font-display text-xl font-extrabold mb-2">No active trip</h4>
+                <p className="text-muted-foreground text-sm mb-4">
+                  The conductor has not started today's trip yet. Boarding opens once the trip is started.
+                </p>
+                <div className="bg-muted rounded-xl p-3 text-xs text-muted-foreground text-left mb-5">
+                  Contact your bus conductor to start the trip. Once active, you can verify your attendance.
+                </div>
+                <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
+              </div>
+            )}
+
             {tripStage === "no_photo" && (
               <div className="py-8 text-center">
                 <div className="size-16 mx-auto rounded-full bg-warning/10 grid place-items-center mb-4">
@@ -266,10 +293,10 @@ function StudentPage() {
                 </div>
                 <h4 className="font-display text-xl font-extrabold mb-2">No face photo on file</h4>
                 <p className="text-muted-foreground text-sm mb-4">
-                  Your account has no registered face photo. Face verification is required for boarding.
+                  Your account has no registered face photo. Face verification is required for self-service boarding.
                 </p>
                 <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 text-xs text-warning text-left mb-5">
-                  <strong>To board today:</strong> Ask the conductor to manually mark your attendance from the Conductor portal. Then re-register with a face photo to enable self-service boarding.
+                  <strong>To board today:</strong> Ask the conductor to manually mark your attendance. Then re-register with a face photo to enable self-service boarding.
                 </div>
                 <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
               </div>
@@ -278,7 +305,7 @@ function StudentPage() {
             {tripStage === "capture" && (
               <FaceCapture
                 onCapture={(url) => void handleTripCapture(url)}
-                hint="Look straight into the camera. Only the registered face is accepted — ensure similar lighting as registration."
+                hint="Look straight into the camera. Only the registered face is accepted — good lighting, no mask."
                 captureLabel={tripModal === "entry" ? "Verify & Start Trip" : "Verify & End Trip"}
               />
             )}
@@ -287,7 +314,7 @@ function StudentPage() {
               <div className="py-12 text-center">
                 <div className="size-14 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                 <p className="font-semibold">Matching face with registered photo…</p>
-                <p className="text-sm text-muted-foreground mt-1">NCC face comparison in progress</p>
+                <p className="text-sm text-muted-foreground mt-1">NCC comparison in progress</p>
               </div>
             )}
 
@@ -299,13 +326,9 @@ function StudentPage() {
                 <h4 className="font-display text-xl font-extrabold mb-1">
                   {tripModal === "entry" ? "Trip Started!" : "Trip Ended!"}
                 </h4>
-                <p className="text-muted-foreground text-sm mb-1">
-                  Attendance marked · Seat {me.seatNo}
-                </p>
+                <p className="text-muted-foreground text-sm mb-1">Attendance marked · Seat {me.seatNo}</p>
                 {lastScore !== null && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Face match score: {(lastScore * 100).toFixed(0)}%
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">Face match score: {(lastScore * 100).toFixed(0)}%</p>
                 )}
                 <p className="text-xs text-muted-foreground">{route?.name?.split("—")[0].trim()} · {new Date().toLocaleTimeString()}</p>
                 <button onClick={closeTrip} className="mt-6 bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition">Done</button>
@@ -319,12 +342,10 @@ function StudentPage() {
                 </div>
                 <h4 className="font-display text-xl font-extrabold mb-1">Face did not match</h4>
                 {lastScore !== null && (
-                  <p className="text-sm text-destructive mb-1">
-                    Score {(lastScore * 100).toFixed(0)}% — need ≥82%
-                  </p>
+                  <p className="text-sm text-destructive mb-1">Score {(lastScore * 100).toFixed(0)}% — need ≥82%</p>
                 )}
                 <p className="text-muted-foreground text-sm mb-5">
-                  Retry {tripRetries} of 3 — ensure good lighting, remove glasses, and face the camera directly.
+                  Retry {tripRetries} of 3 — ensure good lighting, remove glasses, face the camera directly.
                 </p>
                 <button
                   onClick={() => setTripStage("capture")}
@@ -341,10 +362,10 @@ function StudentPage() {
                   <AlertTriangle className="size-9 text-warning" />
                 </div>
                 <h4 className="font-display text-xl font-extrabold mb-1">Entry blocked</h4>
-                <p className="text-muted-foreground text-sm mb-3">3 failed face verifications. Admin &amp; conductor notified with the captured image.</p>
+                <p className="text-muted-foreground text-sm mb-3">3 failed face verifications. Conductor &amp; admin notified with the captured image.</p>
                 <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 text-xs text-warning text-left mb-5">
                   <ScanFace className="size-3.5 inline mr-1.5" />
-                  Contact the conductor. They can review your photo and approve your entry manually.
+                  Contact the conductor. They can review your photo and approve entry manually.
                 </div>
                 <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
               </div>
