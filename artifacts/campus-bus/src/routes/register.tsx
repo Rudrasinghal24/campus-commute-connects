@@ -127,6 +127,27 @@ function Register() {
       });
 
       if (!result.ok) {
+        if (result.error.toLowerCase().includes("network") || result.error.includes("500") || result.error.includes("Failed to fetch")) {
+          const localRes = useStore.getState().addStudent({
+            name: formData.name.trim(),
+            rollNo: formData.rollNo.trim(),
+            branch: formData.branch,
+            semester: formData.semester,
+            phone: formData.phone,
+            parentPhone: formData.parentPhone,
+            routeId: formData.routeId,
+            pickupPoint,
+            photo: photoDataUrl,
+          });
+          if (localRes.ok) {
+            console.log("[Register] Registered locally via store fallback:", localRes.student.id);
+            loginStudent(localRes.student.id);
+            const route = routes.find((r) => r.id === formData.routeId);
+            setRegisteredInfo({ name: localRes.student.name, rollNo: localRes.student.rollNo, seatNo: localRes.student.seatNo, route: route?.name ?? "—", fare: route?.fare ?? 0 });
+            setStep("success");
+            return;
+          }
+        }
         console.error("[Register] API error:", result.error);
         setApiError(result.error);
         setStep("form");

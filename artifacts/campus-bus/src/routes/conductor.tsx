@@ -319,8 +319,15 @@ function ConductorPage() {
             </div>
 
             <div className="lg:col-span-5 bg-card border border-border rounded-3xl p-6 shadow-sm">
-              <h3 className="font-display text-lg font-extrabold mb-4">Occupied seats</h3>
-              {bus && <SeatGrid routeId={bus.routeId} />}
+              <h3 className="font-display text-lg font-extrabold mb-1">Live seat grid</h3>
+              <p className="text-xs text-muted-foreground mb-4">Real-time occupancy &amp; empty seat warnings</p>
+              {bus && (
+                <SeatGrid
+                  routeId={bus.routeId}
+                  onboardStudentIds={onboardSet}
+                  emptyAlertStudentIds={new Set(activeTrip ? notBoardedPaid.map((s) => s.id) : [])}
+                />
+              )}
             </div>
           </div>
         </div>

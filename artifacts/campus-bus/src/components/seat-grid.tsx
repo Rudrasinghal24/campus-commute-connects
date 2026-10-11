@@ -6,11 +6,15 @@ export function SeatGrid({
   highlightStudentId,
   onSelectSeat,
   selectableEmpty,
+  onboardStudentIds,
+  emptyAlertStudentIds,
 }: {
   routeId: string;
   highlightStudentId?: string;
   onSelectSeat?: (seatNo: string) => void;
   selectableEmpty?: boolean;
+  onboardStudentIds?: Set<string>;
+  emptyAlertStudentIds?: Set<string>;
 }) {
   const students = useStore((s) => s.students);
   const onRoute: Student[] = students.filter((s) => s.routeId === routeId);
@@ -35,12 +39,16 @@ export function SeatGrid({
                 const seat = `${row.toString().padStart(2, "0")}${c}`;
                 const occupant = seatMap.get(seat);
                 const isMine = highlighted?.seatNo === seat;
+                const isOnboard = occupant ? onboardStudentIds?.has(occupant.id) : false;
+                const isPossiblyEmpty = occupant ? emptyAlertStudentIds?.has(occupant.id) : false;
                 return (
                   <SeatBox
                     key={seat}
                     seat={seat}
                     occupant={occupant}
                     isMine={isMine}
+                    isOnboard={isOnboard}
+                    isPossiblyEmpty={isPossiblyEmpty}
                     onSelect={onSelectSeat}
                     selectableEmpty={selectableEmpty}
                   />
@@ -53,12 +61,16 @@ export function SeatGrid({
                 const seat = `${row.toString().padStart(2, "0")}${c}`;
                 const occupant = seatMap.get(seat);
                 const isMine = highlighted?.seatNo === seat;
+                const isOnboard = occupant ? onboardStudentIds?.has(occupant.id) : false;
+                const isPossiblyEmpty = occupant ? emptyAlertStudentIds?.has(occupant.id) : false;
                 return (
                   <SeatBox
                     key={seat}
                     seat={seat}
                     occupant={occupant}
                     isMine={isMine}
+                    isOnboard={isOnboard}
+                    isPossiblyEmpty={isPossiblyEmpty}
                     onSelect={onSelectSeat}
                     selectableEmpty={selectableEmpty}
                   />
@@ -68,10 +80,12 @@ export function SeatGrid({
           </div>
         ))}
       </div>
-      <div className="flex flex-wrap gap-3 justify-center text-[11px] font-medium mt-6 pt-4 border-t border-border">
-        <Legend swatch="bg-card border border-border" label="Available" />
-        <Legend swatch="bg-primary" label="Occupied" />
-        <Legend swatch="bg-accent" label="Yours" />
+      <div className="flex flex-wrap gap-2.5 justify-center text-[10px] font-medium mt-6 pt-4 border-t border-border">
+        <Legend swatch="bg-card border border-border" label="Vacant" />
+        <Legend swatch="bg-primary text-primary-foreground" label="Assigned" />
+        <Legend swatch="bg-success text-success-foreground" label="In Bus" />
+        <Legend swatch="bg-warning text-warning-foreground" label="Empty Alert" />
+        <Legend swatch="bg-accent text-accent-foreground" label="Yours" />
       </div>
     </div>
   );
@@ -81,12 +95,16 @@ function SeatBox({
   seat,
   occupant,
   isMine,
+  isOnboard,
+  isPossiblyEmpty,
   onSelect,
   selectableEmpty,
 }: {
   seat: string;
   occupant?: Student;
   isMine?: boolean;
+  isOnboard?: boolean;
+  isPossiblyEmpty?: boolean;
   onSelect?: (s: string) => void;
   selectableEmpty?: boolean;
 }) {
@@ -95,6 +113,20 @@ function SeatBox({
     return <div className={`${base} bg-accent text-accent-foreground ring-2 ring-accent/30 ring-offset-2 ring-offset-background`}>{seat}</div>;
   }
   if (occupant) {
+    if (isOnboard) {
+      return (
+        <div className={`${base} bg-success text-success-foreground`} title={`${occupant.name} — Verified Onboard`}>
+          {seat}
+        </div>
+      );
+    }
+    if (isPossiblyEmpty) {
+      return (
+        <div className={`${base} bg-warning text-warning-foreground border border-warning`} title={`${occupant.name} — Possibly Empty (Not Verified)`}>
+          {seat}
+        </div>
+      );
+    }
     return (
       <div className={`${base} bg-primary text-primary-foreground`} title={occupant.name}>
         {seat}

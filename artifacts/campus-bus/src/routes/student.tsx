@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { SeatGrid } from "@/components/seat-grid";
 import { StatCard } from "@/components/stat-card";
-import { FaceCapture, compareFaceImages } from "@/components/face-capture";
+import { FaceCapture, compareFaceImages, analyzeBusEnvironment } from "@/components/face-capture";
 import {
   Bus, Wallet, History, Armchair, ScanFace, MapPin,
   CheckCircle2, XCircle, ShieldCheck, AlertTriangle,
@@ -16,10 +16,10 @@ export const Route = createFileRoute("/student")({
   component: StudentPage,
 });
 
-type TripStage = "capture" | "verifying" | "success" | "fail" | "blocked" | "no_photo" | "no_active_trip";
+type TripStage = "capture" | "verifying" | "success" | "fail" | "blocked" | "no_photo" | "no_active_trip" | "env_fail";
 
 function StudentPage() {
-  const { students, currentStudentId, routes, attendance, payments, payFees, buses, trips, logAttendance, flagSuspicious } = useStore();
+  const { students, currentStudentId, routes, attendance, payments, payFees, buses, trips, logAttendance, flagSuspicious, suspicious } = useStore();
   const me = students.find((s) => s.id === currentStudentId) ?? students[0];
   const route = routes.find((r) => r.id === me?.routeId);
   const myBus = buses.find((b) => b.routeId === me?.routeId);
@@ -38,12 +38,14 @@ function StudentPage() {
   const [tripStage, setTripStage] = useState<TripStage>("capture");
   const [tripRetries, setTripRetries] = useState(0);
   const [lastScore, setLastScore] = useState<number | null>(null);
+  const [envReason, setEnvReason] = useState<string>("");
 
   const openTrip = (type: "entry" | "exit") => {
     if (!me?.feesPaid) return;
     setTripModal(type);
     setTripRetries(0);
     setLastScore(null);
+    setEnvReason("");
 
     if (!activeTrip) {
       setTripStage("no_active_trip");
@@ -59,13 +61,41 @@ function StudentPage() {
     setTripStage("capture");
     setTripRetries(0);
     setLastScore(null);
+    setEnvReason("");
   };
 
   const handleTripCapture = async (dataUrl: string) => {
     if (!me || !tripModal) return;
     setTripStage("verifying");
-    console.log("[Student] Starting face verification:", tripModal);
+    console.log("[Student] Starting verification for:", tripModal);
 
+    // 1. Bus environment verification (Anti-Remote Selfie Fraud)
+    try {
+      const envCheck = await analyzeBusEnvironment(dataUrl);
+      console.log("[Student] Bus environment analysis result:", envCheck);
+      if (!envCheck.isBusInterior) {
+        console.warn("[Student] Rejected: Non-bus environment detected");
+        setEnvReason(envCheck.reason || "Bus cabin / seating features not detected.");
+        const suspId = "x_env_" + Date.now();
+        const reasonText = `Bus environment check failed: Remote selfie / non-bus location suspected during ${tripModal}`;
+        flagSuspicious(me.id, reasonText, myBus?.id ?? "", dataUrl, me.seatNo);
+        api.suspicious.flag({
+          id: suspId,
+          studentId: me.id,
+          reason: reasonText,
+          ts: Date.now(),
+          busId: myBus?.id ?? "",
+          capturedImage: dataUrl,
+          seatNo: me.seatNo,
+        }).catch(console.error);
+        setTripStage("env_fail");
+        return;
+      }
+    } catch (err) {
+      console.error("[Student] Bus environment check error:", err);
+    }
+
+    // 2. Face comparison
     let matched = false;
     let score = 0;
 
@@ -193,6 +223,20 @@ function StudentPage() {
         </aside>
 
         <section className="lg:col-span-8 space-y-6">
+          {suspicious.some((x) => !x.resolved && (x.studentId === me.id || x.seatNo === me.seatNo)) && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="size-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-destructive">Security Alert: Seat Occupancy Conflict Detected</h4>
+                <p className="text-xs text-foreground/80 mt-1">
+                  A verification attempt or discrepancy was flagged on your assigned seat (<strong>{me.seatNo}</strong>).
+                  If you are not currently in the bus, another individual may have attempted boarding using your seat.
+                  The bus conductor has been notified with photo evidence.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="grid sm:grid-cols-3 gap-4">
             <StatCard label="Assigned Seat" value={me.seatNo} hint="Auto-allocated" tone="primary" icon={<Armchair className="size-4" />} />
             <StatCard label="Fee Status" value={me.feesPaid ? "PAID" : "DUE"} hint={`Fare ₹${route?.fare ?? 0}/sem`} tone={me.feesPaid ? "success" : "danger"} icon={<Wallet className="size-4" />} />
@@ -213,8 +257,13 @@ function StudentPage() {
 
           <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
             <h3 className="font-display text-xl font-extrabold text-foreground mb-1">{route?.name}</h3>
-            <p className="text-sm text-muted-foreground mb-5">Live seat occupancy</p>
-            <SeatGrid routeId={me.routeId} highlightStudentId={me.id} />
+            <p className="text-sm text-muted-foreground mb-5">Live seat occupancy &amp; board status</p>
+            <SeatGrid
+              routeId={me.routeId}
+              highlightStudentId={me.id}
+              onboardStudentIds={new Set(attendance.filter((a) => a.busId === myBus?.id && a.type === "entry").map((a) => a.studentId))}
+              emptyAlertStudentIds={new Set(activeTrip ? students.filter((s) => s.routeId === me.routeId && s.feesPaid && !attendance.some((a) => a.studentId === s.id && a.busId === myBus?.id && a.type === "entry")).map((s) => s.id) : [])}
+            />
           </div>
 
           <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
@@ -368,6 +417,31 @@ function StudentPage() {
                   Contact the conductor. They can review your photo and approve entry manually.
                 </div>
                 <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
+              </div>
+            )}
+
+            {tripStage === "env_fail" && (
+              <div className="py-8 text-center">
+                <div className="size-16 mx-auto rounded-full bg-destructive/10 grid place-items-center mb-4">
+                  <AlertTriangle className="size-9 text-destructive" />
+                </div>
+                <h4 className="font-display text-xl font-extrabold mb-1">Bus Interior Not Verified</h4>
+                <p className="text-destructive text-sm font-medium mb-2">{envReason || "Remote selfie / non-bus background detected"}</p>
+                <p className="text-muted-foreground text-xs mb-5 max-w-sm mx-auto">
+                  Anti-fraud protection prevents attendance from outside the bus (hostel room, classroom, outside).
+                  Please point your camera so bus seats or windows are visible behind you.
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={() => setTripStage("capture")}
+                    className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition inline-flex items-center gap-2"
+                  >
+                    <RefreshCcw className="size-4" /> Try Again Inside Bus
+                  </button>
+                  <button onClick={closeTrip} className="bg-muted text-foreground px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">
+                    Close
+                  </button>
+                </div>
               </div>
             )}
           </div>

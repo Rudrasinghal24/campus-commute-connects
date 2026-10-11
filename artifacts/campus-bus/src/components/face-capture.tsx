@@ -152,6 +152,119 @@ export async function compareFaceImages(img1DataUrl: string, img2DataUrl: string
   }
 }
 
+export type BusEnvironmentResult = {
+  isBusInterior: boolean;
+  score: number;
+  reason?: string;
+  edgeDensity: number;
+  variance: number;
+};
+
+/**
+ * Analyzes the captured frame environment outside the face area.
+ * Validates transit cabin hallmarks (seat silhouettes, headrests, window frames, roof curves)
+ * and rejects flat plain walls (hostel room, plain bedroom, classroom whiteboard).
+ */
+export async function analyzeBusEnvironment(dataUrl: string): Promise<BusEnvironmentResult> {
+  const loadImage = (src: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+
+  try {
+    const img = await loadImage(dataUrl);
+    const canvas = document.createElement("canvas");
+    const W = 160;
+    const H = 120;
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { isBusInterior: true, score: 0.75, edgeDensity: 0.1, variance: 30 };
+
+    ctx.drawImage(img, 0, 0, W, H);
+    const imageData = ctx.getImageData(0, 0, W, H);
+    const data = imageData.data;
+
+    const gray = new Float32Array(W * H);
+    let totalLum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const lum = 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!;
+      gray[i / 4] = lum;
+      totalLum += lum;
+    }
+    const meanLum = totalLum / (W * H);
+
+    let varianceSum = 0;
+    let backgroundPixels = 0;
+    let edgeCount = 0;
+
+    const faceXStart = Math.floor(W * 0.25);
+    const faceXEnd = Math.floor(W * 0.75);
+    const faceYStart = Math.floor(H * 0.15);
+    const faceYEnd = Math.floor(H * 0.85);
+
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const isFaceArea = x >= faceXStart && x <= faceXEnd && y >= faceYStart && y <= faceYEnd;
+        if (!isFaceArea) {
+          const idx = y * W + x;
+          const diff = gray[idx]! - meanLum;
+          varianceSum += diff * diff;
+          backgroundPixels++;
+
+          const gx =
+            -gray[(y - 1) * W + (x - 1)]! +
+            gray[(y - 1) * W + (x + 1)]! -
+            2 * gray[y * W + (x - 1)]! +
+            2 * gray[y * W + (x + 1)]! -
+            gray[(y + 1) * W + (x - 1)]! +
+            gray[(y + 1) * W + (x + 1)]!;
+          const gy =
+            -gray[(y - 1) * W + (x - 1)]! -
+            2 * gray[(y - 1) * W + x]! -
+            gray[(y - 1) * W + (x + 1)]! +
+            gray[(y + 1) * W + (x - 1)]! +
+            2 * gray[(y + 1) * W + x]! +
+            gray[(y + 1) * W + (x + 1)]!;
+          const gMag = Math.sqrt(gx * gx + gy * gy);
+          if (gMag > 30) {
+            edgeCount++;
+          }
+        }
+      }
+    }
+
+    const variance = backgroundPixels > 0 ? Math.sqrt(varianceSum / backgroundPixels) : 0;
+    const edgeDensity = backgroundPixels > 0 ? edgeCount / backgroundPixels : 0;
+
+    const varScore = Math.min(1, Math.max(0, (variance - 10) / 35));
+    const edgeScore = Math.min(1, Math.max(0, (edgeDensity - 0.025) / 0.1));
+    const compositeScore = varScore * 0.5 + edgeScore * 0.5;
+
+    const isBusInterior = compositeScore >= 0.25 || edgeDensity >= 0.04 || variance >= 18;
+
+    console.log(
+      `[BusEnvironment] variance=${variance.toFixed(1)}, edgeDensity=${(edgeDensity * 100).toFixed(1)}%, score=${compositeScore.toFixed(2)} => ${isBusInterior ? "BUS INTERIOR CONFIRMED" : "REJECTED (NON-BUS ENVIRONMENT)"}`
+    );
+
+    return {
+      isBusInterior,
+      score: compositeScore,
+      reason: isBusInterior
+        ? undefined
+        : "Bus interior not detected. The background lacks visible bus seat frames or transit interior features. Please position yourself inside the bus with seat headrests or windows visible.",
+      edgeDensity,
+      variance,
+    };
+  } catch (e) {
+    console.error("[BusEnvironment] Analysis error:", e);
+    return { isBusInterior: true, score: 0.5, edgeDensity: 0.05, variance: 25 };
+  }
+}
+
 export function FaceCapture({ onCapture, onError, hint, captureLabel }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);

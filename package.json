@@ -2,15 +2,33 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build":"vite build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
-  },
   "private": true,
+  "type": "module",
+  "workspaces": [
+    "artifacts/*",
+    "lib/*",
+    "scripts"
+  ],
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "npm run build --workspace=@workspace/campus-bus",
+    "start": "NODE_ENV=production tsx server.ts",
+    "typecheck": "tsc -p artifacts/campus-bus/tsconfig.json --noEmit",
+    "lint": "tsc -p artifacts/campus-bus/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.0.1",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0"
+  },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
     "prettier": "^3.8.3",
-    "typescript": "~5.9.3"
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.3",
+    "vite": "^6.0.0"
   }
 }

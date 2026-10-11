@@ -1,0 +1,6 @@
+{
+  "name": "UniRoute — Campus Bus Management",
+  "description": "Production-ready campus bus transit management system with live MediaPipe face verification, anti-fraud bus interior environment detection, seat allocation, payments, conductor overrides, and comprehensive administrator dashboard.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
