@@ -51,14 +51,15 @@ function Landing() {
               <span className="text-accent">precisely managed.</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-xl mb-8">
-              Real-time seat allocation, QR boarding with live face verification, attendance logs and payments — for students, conductors and administrators.
+              Real-time seat allocation, live MediaPipe face verification with cabin anti-fraud detection, attendance logs and payments — for students, conductors and administrators.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
                 to="/login"
+                search={{ role: "student" }}
                 className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90 transition"
               >
-                <LogIn className="size-4" /> Student Login
+                <LogIn className="size-4" /> Student Portal
               </Link>
               <Link
                 to="/register"
@@ -105,22 +106,22 @@ function Landing() {
         <div className="grid md:grid-cols-3 gap-5">
           <RoleCard
             icon={<GraduationCap className="size-6" />}
-            title="Student Login"
-            desc="Sign in with roll number and password. Face-verified boarding, attendance and payments."
+            title="Student Portal"
+            desc="Sign in with roll number and password. Live camera face-verified bus boarding, seat allocation and fee status."
             tone="accent"
             href="/login"
           />
           <RoleCard
             icon={<UserCog className="size-6" />}
-            title="Conductor"
-            desc="Live student list, manual attendance, suspicious entries, override approval."
+            title="Conductor Panel"
+            desc="Start/end bus trips, student manifest, empty seat detection, fraud alerts, and manual overrides."
             tone="primary"
             onClick={() => pickRole("conductor")}
           />
           <RoleCard
             icon={<ShieldCheck className="size-6" />}
-            title="Admin"
-            desc="Manage buses, routes, students, payments, suspicious entries."
+            title="Admin Console"
+            desc="Fleet oversight, routes, student profiles, duplicate face detection logs, revenue and analytics."
             tone="primary"
             onClick={() => pickRole("admin")}
           />

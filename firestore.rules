@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if isValidId(studentId);
+    }
+
+    match /buses/{busId} {
+      allow read: if true;
+      allow write: if isValidId(busId);
+    }
+
+    match /routes/{routeId} {
+      allow read: if true;
+      allow write: if isValidId(routeId);
+    }
+
+    match /trips/{tripId} {
+      allow read: if true;
+      allow write: if isValidId(tripId);
+    }
+
+    match /attendance_logs/{logId} {
+      allow read: if true;
+      allow write: if isValidId(logId);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if true;
+      allow write: if isValidId(paymentId);
+    }
+
+    match /suspicious_entries/{entryId} {
+      allow read: if true;
+      allow write: if isValidId(entryId);
+    }
+
+    match /conductor_overrides/{overrideId} {
+      allow read: if true;
+      allow write: if isValidId(overrideId);
+    }
+  }
+}

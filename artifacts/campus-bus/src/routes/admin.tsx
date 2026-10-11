@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
@@ -19,6 +19,7 @@ type Tab = "overview" | "buses" | "routes" | "students" | "seats" | "payments" |
 
 function AdminPage() {
   const {
+    role, setRole,
     buses, routes, students, payments, attendance, suspicious,
     addBus, removeBus, addRoute, removeRoute, assignSeat, overrides,
     declinedForTrip, declineForTrip, undeclineForTrip, removeStudent, logAttendance,
@@ -79,6 +80,37 @@ function AdminPage() {
     setConfirmRemoveId(null);
     setRemoveLoading(null);
   };
+
+  if (role !== "admin") {
+    return (
+      <AppShell nav={[]} title="Admin Console">
+        <div className="max-w-md mx-auto text-center py-16 px-4">
+          <div className="size-16 rounded-2xl bg-destructive/10 text-destructive grid place-items-center mx-auto mb-4">
+            <ShieldCheck className="size-8" />
+          </div>
+          <h2 className="font-display text-2xl font-extrabold mb-2">Admin Console Restricted</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Administrator security credentials are required to oversee fleet management, student registrations, duplicate face alerts, and financial reconciliations.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/login"
+              search={{ role: "admin" }}
+              className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition"
+            >
+              Administrator Sign In
+            </Link>
+            <button
+              onClick={() => setRole("admin")}
+              className="bg-card border border-border px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted transition"
+            >
+              Demo as Admin
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell nav={nav} title="Admin Console">

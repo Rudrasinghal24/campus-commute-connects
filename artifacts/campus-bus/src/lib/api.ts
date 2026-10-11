@@ -63,6 +63,20 @@ export const api = {
       call<{ ok: boolean }>(`/students/${id}`, { method: "DELETE" }),
   },
 
+  buses: {
+    list: () => call<any[]>("/buses"),
+    create: (data: { id?: string; number: string; capacity: number; routeId: string; driver: string; conductor: string }) =>
+      call<any>("/buses", { method: "POST", body: JSON.stringify(data) }),
+    remove: (id: string) => call<{ ok: boolean }>(`/buses/${id}`, { method: "DELETE" }),
+  },
+
+  routes: {
+    list: () => call<any[]>("/routes"),
+    create: (data: { id?: string; name: string; stops: string | string[]; fare: number }) =>
+      call<any>("/routes", { method: "POST", body: JSON.stringify(data) }),
+    remove: (id: string) => call<{ ok: boolean }>(`/routes/${id}`, { method: "DELETE" }),
+  },
+
   trips: {
     start: (busId: string, routeId: string) =>
       call<ApiTrip>("/trips/start", { method: "POST", body: JSON.stringify({ busId, routeId }) }),

@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Registered campus bus student profile with seat assignment and contact details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "rollNo": { "type": "string", "maxLength": 30 },
+        "branch": { "type": "string", "maxLength": 20 },
+        "semester": { "type": "string", "maxLength": 10 },
+        "phone": { "type": "string", "maxLength": 15 },
+        "parentPhone": { "type": "string", "maxLength": 15 },
+        "routeId": { "type": "string" },
+        "pickupPoint": { "type": "string", "maxLength": 100 },
+        "seatNo": { "type": "string", "maxLength": 10 },
+        "photo": { "type": "string" },
+        "feesPaid": { "type": "boolean" },
+        "passwordHash": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "rollNo", "phone", "routeId", "seatNo"]
+    },
+    "Bus": {
+      "title": "Bus",
+      "description": "Campus transit bus fleet record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "string", "maxLength": 30 },
+        "capacity": { "type": "number" },
+        "routeId": { "type": "string" },
+        "driver": { "type": "string", "maxLength": 100 },
+        "conductor": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "number", "capacity", "routeId"]
+    },
+    "Route": {
+      "title": "Route",
+      "description": "Bus transit route with stops and fare",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "stops": { "type": "string" },
+        "fare": { "type": "number" }
+      },
+      "required": ["id", "name", "fare"]
+    },
+    "Trip": {
+      "title": "Trip",
+      "description": "Transit trip record managed by conductor or administrator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "busId": { "type": "string" },
+        "routeId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "ended"] },
+        "startedAt": { "type": "number" },
+        "endedAt": { "type": "number" }
+      },
+      "required": ["id", "busId", "routeId", "status", "startedAt"]
+    },
+    "AttendanceLog": {
+      "title": "AttendanceLog",
+      "description": "Student boarding attendance verification event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "type": { "type": "string", "enum": ["entry", "exit"] },
+        "ts": { "type": "number" },
+        "busId": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "conductorOverride": { "type": "boolean" }
+      },
+      "required": ["id", "studentId", "type", "ts", "busId"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Semester bus fee payment transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "ts": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "studentId", "amount", "ts", "status"]
+    },
+    "SuspiciousEntry": {
+      "title": "SuspiciousEntry",
+      "description": "Fraud detection alert record with evidence image",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "reason": { "type": "string" },
+        "ts": { "type": "number" },
+        "busId": { "type": "string" },
+        "capturedImage": { "type": "string" },
+        "seatNo": { "type": "string" },
+        "resolved": { "type": "boolean" }
+      },
+      "required": ["id", "studentId", "reason", "ts", "busId"]
+    },
+    "ConductorOverride": {
+      "title": "ConductorOverride",
+      "description": "Manual attendance approval audit record by conductor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "suspiciousEntryId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "conductorName": { "type": "string", "maxLength": 100 },
+        "remarks": { "type": "string", "maxLength": 300 },
+        "ts": { "type": "number" },
+        "attendanceType": { "type": "string" }
+      },
+      "required": ["id", "suspiciousEntryId", "studentId", "conductorName", "ts", "attendanceType"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Registered students collection"
+    },
+    "/buses/{busId}": {
+      "schema": { "$ref": "#/entities/Bus" },
+      "description": "Campus bus fleet collection"
+    },
+    "/routes/{routeId}": {
+      "schema": { "$ref": "#/entities/Route" },
+      "description": "Campus transit routes collection"
+    },
+    "/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/Trip" },
+      "description": "Trip lifecycle log collection"
+    },
+    "/attendance_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AttendanceLog" },
+      "description": "Attendance entries and exits collection"
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Semester fee payment records collection"
+    },
+    "/suspicious_entries/{entryId}": {
+      "schema": { "$ref": "#/entities/SuspiciousEntry" },
+      "description": "Anti-fraud suspicious alerts collection"
+    },
+    "/conductor_overrides/{overrideId}": {
+      "schema": { "$ref": "#/entities/ConductorOverride" },
+      "description": "Conductor manual override audit collection"
+    }
+  }
+}

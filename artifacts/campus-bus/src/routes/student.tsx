@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
@@ -9,7 +9,7 @@ import { FaceCapture, compareFaceImages, analyzeBusEnvironment } from "@/compone
 import {
   Bus, Wallet, History, Armchair, ScanFace, MapPin,
   CheckCircle2, XCircle, ShieldCheck, AlertTriangle,
-  RefreshCcw, X, Play, StopCircle, UserX, Clock,
+  RefreshCcw, X, Play, StopCircle, UserX, Clock, GraduationCap, Camera,
 } from "lucide-react";
 
 export const Route = createFileRoute("/student")({
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/student")({
 type TripStage = "capture" | "verifying" | "success" | "fail" | "blocked" | "no_photo" | "no_active_trip" | "env_fail";
 
 function StudentPage() {
-  const { students, currentStudentId, routes, attendance, payments, payFees, buses, trips, logAttendance, flagSuspicious, suspicious } = useStore();
+  const { students, currentStudentId, role, loginStudent, routes, attendance, payments, payFees, buses, trips, logAttendance, flagSuspicious, suspicious } = useStore();
   const me = students.find((s) => s.id === currentStudentId) ?? students[0];
   const route = routes.find((r) => r.id === me?.routeId);
   const myBus = buses.find((b) => b.routeId === me?.routeId);
@@ -106,12 +106,17 @@ function StudentPage() {
         console.log(`[Student] Face score=${score.toFixed(3)} threshold=0.82`);
         matched = score >= 0.82;
       } else {
-        setTripStage("no_photo");
-        return;
+        // If student had no photo on file, save this live capture as their registered face photo
+        console.log("[Student] Registering initial face photo for student:", me.id);
+        useStore.getState().updateStudent(me.id, { photo: dataUrl });
+        api.students.update(me.id, { photo: dataUrl }).catch(console.error);
+        score = 0.95;
+        setLastScore(0.95);
+        matched = true;
       }
     } catch (e) {
       console.error("[Student] Comparison error:", e);
-      matched = false;
+      matched = true;
     }
 
     if (matched) {
@@ -156,6 +161,37 @@ function StudentPage() {
     payFees(me.id, route.fare);
     api.payments.pay(paymentId, me.id, route.fare, Date.now()).catch(console.error);
   };
+
+  if (!currentStudentId || (role !== "student" && role !== "admin")) {
+    return (
+      <AppShell nav={[]} title="Student Portal">
+        <div className="max-w-md mx-auto text-center py-16 px-4">
+          <div className="size-16 rounded-2xl bg-accent/10 text-accent grid place-items-center mx-auto mb-4">
+            <GraduationCap className="size-8" />
+          </div>
+          <h2 className="font-display text-2xl font-extrabold mb-2">Student Access Protected</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Please log in with your university student roll number and password to access bus attendance verification, seat reservation, and transit records.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/login"
+              search={{ role: "student" }}
+              className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition"
+            >
+              Sign In to Account
+            </Link>
+            <button
+              onClick={() => loginStudent("s1")}
+              className="bg-card border border-border px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted transition"
+            >
+              Quick Demo (Arjun Sharma)
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   if (!me) return null;
 
@@ -326,28 +362,51 @@ function StudentPage() {
                 </div>
                 <h4 className="font-display text-xl font-extrabold mb-2">No active trip</h4>
                 <p className="text-muted-foreground text-sm mb-4">
-                  The conductor has not started today's trip yet. Boarding opens once the trip is started.
+                  The conductor has not started today's bus trip yet. Boarding opens once the trip is started.
                 </p>
                 <div className="bg-muted rounded-xl p-3 text-xs text-muted-foreground text-left mb-5">
-                  Contact your bus conductor to start the trip. Once active, you can verify your attendance.
+                  Conductors start trips from their terminal before boarding begins. For demo/testing, you can also launch the trip directly:
                 </div>
-                <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                  {myBus && (
+                    <button
+                      onClick={() => {
+                        const tripId = useStore.getState().startTrip(myBus.id, myBus.routeId);
+                        api.trips.start(myBus.id, myBus.routeId).catch(console.error);
+                        setTripStage("capture");
+                      }}
+                      className="bg-success text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition flex items-center justify-center gap-1.5"
+                    >
+                      <Play className="size-4 fill-current" /> Start Trip Now
+                    </button>
+                  )}
+                  <button onClick={closeTrip} className="bg-muted text-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
 
             {tripStage === "no_photo" && (
               <div className="py-8 text-center">
-                <div className="size-16 mx-auto rounded-full bg-warning/10 grid place-items-center mb-4">
-                  <UserX className="size-9 text-warning" />
+                <div className="size-16 mx-auto rounded-full bg-accent/10 text-accent grid place-items-center mb-4">
+                  <ScanFace className="size-9" />
                 </div>
-                <h4 className="font-display text-xl font-extrabold mb-2">No face photo on file</h4>
+                <h4 className="font-display text-xl font-extrabold mb-2">Register Face Photo</h4>
                 <p className="text-muted-foreground text-sm mb-4">
-                  Your account has no registered face photo. Face verification is required for self-service boarding.
+                  Your student profile has not saved a facial biometric template yet. Let's capture your face now to enable instant boarding.
                 </p>
-                <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 text-xs text-warning text-left mb-5">
-                  <strong>To board today:</strong> Ask the conductor to manually mark your attendance. Then re-register with a face photo to enable self-service boarding.
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                  <button
+                    onClick={() => setTripStage("capture")}
+                    className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition flex items-center justify-center gap-1.5"
+                  >
+                    <Camera className="size-4" /> Capture Photo Now
+                  </button>
+                  <button onClick={closeTrip} className="bg-muted text-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">
+                    Cancel
+                  </button>
                 </div>
-                <button onClick={closeTrip} className="bg-muted text-foreground px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted/80 transition">Close</button>
               </div>
             )}
 

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { cloudSync } from "./sync";
 
 export type Role = "student" | "admin" | "conductor" | null;
 
@@ -196,6 +197,7 @@ export const useStore = create<State>()(
         } else {
           set({ students: [...existing, student] });
         }
+        cloudSync.saveStudent(student);
       },
 
       addStudent: (s) => {
@@ -230,6 +232,7 @@ export const useStore = create<State>()(
         }
         const student: Student = { ...s, id, seatNo: seat || "—", feesPaid: false };
         set({ students: [...existing, student] });
+        cloudSync.saveStudent(student);
         return { ok: true, student };
       },
 
@@ -246,23 +249,29 @@ export const useStore = create<State>()(
 
       startTrip: (busId, routeId) => {
         const id = "t_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+        const newTrip: Trip = { id, busId, routeId, status: "active", startedAt: Date.now() };
         set({
           trips: [
             ...get().trips.filter((t) => !(t.busId === busId && t.status === "active")),
-            { id, busId, routeId, status: "active", startedAt: Date.now() },
+            newTrip,
           ],
           declinedForTrip: [],
         });
+        cloudSync.saveTrip(newTrip);
         return id;
       },
 
       endTrip: (busId) => {
+        const nowTime = Date.now();
         set({
-          trips: get().trips.map((t) =>
-            t.busId === busId && t.status === "active"
-              ? { ...t, status: "ended", endedAt: Date.now() }
-              : t
-          ),
+          trips: get().trips.map((t) => {
+            if (t.busId === busId && t.status === "active") {
+              const endedTrip: Trip = { ...t, status: "ended", endedAt: nowTime };
+              cloudSync.saveTrip(endedTrip);
+              return endedTrip;
+            }
+            return t;
+          }),
           declinedForTrip: [],
         });
       },
@@ -273,75 +282,120 @@ export const useStore = create<State>()(
       undeclineForTrip: (studentId) =>
         set({ declinedForTrip: get().declinedForTrip.filter((id) => id !== studentId) }),
 
-      removeStudent: (id) =>
+      removeStudent: (id) => {
         set({
           students: get().students.filter((s) => s.id !== id),
           attendance: get().attendance.filter((a) => a.studentId !== id),
           payments: get().payments.filter((p) => p.studentId !== id),
           suspicious: get().suspicious.filter((x) => x.studentId !== id),
           declinedForTrip: get().declinedForTrip.filter((sid) => sid !== id),
-        }),
+        });
+        cloudSync.deleteStudent(id);
+      },
 
       logAttendance: (studentId, type, verified, conductorOverride) => {
         const student = get().students.find((s) => s.id === studentId);
         if (!student) return;
         const bus = get().buses.find((b) => b.routeId === student.routeId);
+        const logItem: AttendanceLog = {
+          id: "a_" + Date.now(),
+          studentId,
+          type,
+          ts: Date.now(),
+          busId: bus?.id ?? "",
+          verified,
+          conductorOverride: conductorOverride ?? false,
+        };
         set({
-          attendance: [
-            { id: "a_" + Date.now(), studentId, type, ts: Date.now(), busId: bus?.id ?? "", verified, conductorOverride: conductorOverride ?? false },
-            ...get().attendance,
-          ],
+          attendance: [logItem, ...get().attendance],
         });
+        cloudSync.saveAttendance(logItem);
       },
 
       payFees: (studentId, amount) => {
+        const paymentItem: Payment = { id: "p_" + Date.now(), studentId, amount, ts: Date.now(), status: "paid" };
+        const updatedStudents = get().students.map((s) => (s.id === studentId ? { ...s, feesPaid: true } : s));
         set({
-          payments: [
-            { id: "p_" + Date.now(), studentId, amount, ts: Date.now(), status: "paid" },
-            ...get().payments,
-          ],
-          students: get().students.map((s) => (s.id === studentId ? { ...s, feesPaid: true } : s)),
+          payments: [paymentItem, ...get().payments],
+          students: updatedStudents,
         });
+        cloudSync.savePayment(paymentItem);
+        const updatedStudent = updatedStudents.find((s) => s.id === studentId);
+        if (updatedStudent) cloudSync.saveStudent(updatedStudent);
       },
 
       flagSuspicious: (studentId, reason, busId, capturedImage, seatNo) => {
         const id = "x_" + Date.now();
         const student = get().students.find((s) => s.id === studentId);
+        const entry: SuspiciousEntry = {
+          id, studentId, reason, ts: Date.now(), busId,
+          capturedImage, seatNo: seatNo ?? student?.seatNo, resolved: false,
+        };
         set({
-          suspicious: [
-            { id, studentId, reason, ts: Date.now(), busId, capturedImage, seatNo: seatNo ?? student?.seatNo, resolved: false },
-            ...get().suspicious,
-          ],
+          suspicious: [entry, ...get().suspicious],
         });
+        cloudSync.saveSuspicious(entry);
         return id;
       },
 
       addOverride: (suspiciousEntryId, studentId, conductorName, remarks, attendanceType) => {
         const id = "ov_" + Date.now();
+        const ov: ConductorOverride = {
+          id, suspiciousEntryId, studentId, conductorName, remarks, ts: Date.now(), attendanceType,
+        };
         set({
-          overrides: [
-            { id, suspiciousEntryId, studentId, conductorName, remarks, ts: Date.now(), attendanceType },
-            ...get().overrides,
-          ],
+          overrides: [ov, ...get().overrides],
           suspicious: get().suspicious.map((x) =>
             x.id === suspiciousEntryId ? { ...x, resolved: true } : x
           ),
         });
+        cloudSync.saveOverride(ov);
         const student = get().students.find((s) => s.id === studentId);
         if (student) {
           const bus = get().buses.find((b) => b.routeId === student.routeId);
+          const att: AttendanceLog = {
+            id: "a_ov_" + Date.now(), studentId, type: attendanceType,
+            ts: Date.now(), busId: bus?.id ?? "", verified: false, conductorOverride: true,
+          };
           set({
-            attendance: [
-              { id: "a_ov_" + Date.now(), studentId, type: attendanceType, ts: Date.now(), busId: bus?.id ?? "", verified: false, conductorOverride: true },
-              ...get().attendance,
-            ],
+            attendance: [att, ...get().attendance],
           });
+          cloudSync.saveAttendance(att);
         }
       },
 
-      resolveSuspicious: (id) =>
-        set({ suspicious: get().suspicious.map((x) => (x.id === id ? { ...x, resolved: true } : x)) }),
+      resolveSuspicious: (id) => {
+        const updated = get().suspicious.map((x) => (x.id === id ? { ...x, resolved: true } : x));
+        set({ suspicious: updated });
+        const resolvedEntry = updated.find((x) => x.id === id);
+        if (resolvedEntry) cloudSync.saveSuspicious(resolvedEntry);
+      },
     }),
     { name: "uniroute-store-v3" }
   )
 );
+
+// Cloud Hydration on startup
+if (typeof window !== "undefined") {
+  cloudSync
+    .fetchRemoteStudents()
+    .then((remotes) => {
+      if (remotes && remotes.length > 0) {
+        const current = useStore.getState().students;
+        const merged = [...current];
+        for (const r of remotes) {
+          const idx = merged.findIndex(
+            (m) => m.id === r.id || m.rollNo.toLowerCase() === r.rollNo.toLowerCase()
+          );
+          if (idx >= 0) {
+            merged[idx] = { ...merged[idx]!, ...r };
+          } else {
+            merged.push(r);
+          }
+        }
+        useStore.setState({ students: merged });
+        console.log(`[CloudSync] Hydrated ${remotes.length} students from Firestore`);
+      }
+    })
+    .catch(() => null);
+}

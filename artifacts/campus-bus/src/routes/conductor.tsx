@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
@@ -19,6 +19,7 @@ type Tab = "students" | "alerts";
 
 function ConductorPage() {
   const {
+    role, setRole,
     students, buses, routes, attendance, trips, startTrip, endTrip,
     declinedForTrip, declineForTrip, undeclineForTrip, removeStudent,
     logAttendance, suspicious, addOverride, overrides,
@@ -108,6 +109,37 @@ function ConductorPage() {
     setOverrideModal(null);
     setOverrideRemarks("");
   };
+
+  if (role !== "conductor" && role !== "admin") {
+    return (
+      <AppShell nav={[]} title="Conductor Console">
+        <div className="max-w-md mx-auto text-center py-16 px-4">
+          <div className="size-16 rounded-2xl bg-primary/10 text-primary grid place-items-center mx-auto mb-4">
+            <UserCog className="size-8" />
+          </div>
+          <h2 className="font-display text-2xl font-extrabold mb-2">Conductor Portal Restricted</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Authorization required. Conductor access controls live bus trips, student manifests, empty seat alerts, and manual overrides.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/login"
+              search={{ role: "conductor" }}
+              className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition"
+            >
+              Conductor Sign In
+            </Link>
+            <button
+              onClick={() => setRole("conductor")}
+              className="bg-card border border-border px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-muted transition"
+            >
+              Demo as Conductor
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell nav={nav} title="Conductor">
